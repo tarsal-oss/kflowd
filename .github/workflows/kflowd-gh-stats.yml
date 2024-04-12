@@ -1,0 +1,82 @@
+name: kflowd-gh-stats
+
+on:
+  schedule:
+    - cron: '10 0 * * *'
+
+permissions: write-all
+
+jobs:
+  gh-stats:
+    runs-on: ubuntu-20.04
+    steps:
+    - name: 'Clone Repository'
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: 'Install GitHub Api'
+      run: |
+        type -p curl >/dev/null || sudo apt install curl -y
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg\
+        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg\
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] "\
+                "https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null\
+        && sudo apt update\
+        && sudo apt install gh -y
+
+    - name: 'Update Views and Clones'
+      env:
+        GH_TOKEN: ${{ secrets.GH_STATS_TOKEN }}
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "<>"
+        git checkout gh-stats
+
+        gh api -H "Accept: application/vnd.github+json" /repos/kflowd/kflowd/traffic/views > gh-stats-views-14d
+        VIEWS_14D=$(jq ".count" gh-stats-views-14d)
+        VIEWS_UNIQUE_14D=$(jq ".uniques" gh-stats-views-14d)
+        cp gh-stats-views-all all
+        jq "[.views[]]" gh-stats-views-14d > 14d
+        jq -s "add | sort_by(.timestamp,-.count) | unique_by(.timestamp) | reverse" 14d all > gh-stats-views-all
+        VIEWS_TOTAL=$(jq "[.[].count] | add" gh-stats-views-all)
+        echo -e "{\"schemaVersion\": 1, \"label\": \"VIEWS: Total\", "\
+                "\"message\": \"$VIEWS_TOTAL\", \"color\": \"yellow\"}" > gh-stats-views.json
+        echo -e "{\"schemaVersion\": 1, \"label\": \"Unique 14d\", "\
+                "\"message\": \"$VIEWS_UNIQUE_14D of $VIEWS_14D\", \"color\": \"yellow\"}" > gh-stats-views-14d.json
+
+        gh api -H "Accept: application/vnd.github+json" /repos/kflowd/kflowd/traffic/clones > gh-stats-clones-14d
+        CLONES_14D=$(jq ".count" gh-stats-clones-14d)
+        CLONES_UNIQUE_14D=$(jq ".uniques" gh-stats-clones-14d)
+        cp gh-stats-clones-all all
+        jq "[.clones[]]" gh-stats-clones-14d > 14d
+        jq -s "add | sort_by(.timestamp,-.count) | unique_by(.timestamp) | reverse" 14d all > gh-stats-clones-all
+        CLONES_TOTAL=$(jq "[.[].count] | add" gh-stats-clones-all)
+        echo -e "{\"schemaVersion\": 1, \"label\": \"CLONES: Total\", "\
+                "\"message\": \"$CLONES_TOTAL\", \"color\": \"orange\"}" > gh-stats-clones.json
+        echo -e "{\"schemaVersion\": 1, \"label\": \"Unique 14d\", "\
+                "\"message\": \"$CLONES_UNIQUE_14D of $CLONES_14D\", \"color\": \"orange\"}" > gh-stats-clones-14d.json
+
+        git add gh-stats-views.json gh-stats-clones.json gh-stats-views-14d.json gh-stats-clones-14d.json gh-stats-views-all gh-stats-clones-all
+        MSG_TOTAL=$(echo "Total:      $VIEWS_TOTAL views, $CLONES_TOTAL clones")
+        MSG_14D=$(echo "Unique 14d: $VIEWS_UNIQUE_14D of $VIEWS_14D views, $CLONES_UNIQUE_14D of $CLONES_14D clones")
+        git commit -m "$MSG_TOTAL"$'\n'"$MSG_14D" || true
+        git push origin gh-stats
+
+    - name: 'Delete gh-stats workflow runs'
+      uses: Mattraks/delete-workflow-runs@v2
+      with:
+        token: ${{ secrets.GH_STATS_TOKEN }}
+        repository: kflowd/kflowd
+        delete_workflow_pattern: kflowd-gh-stats
+        retain_days: 0
+        keep_minimum_runs: 0
+
+    - name: 'Delete pages-build-deployment workflow runs'
+      uses: Mattraks/delete-workflow-runs@v2
+      with:
+        token: ${{ secrets.GH_STATS_TOKEN }}
+        repository: kflowd/kflowd
+        delete_workflow_pattern: pages-build-deployment
+        retain_days: 0
+        keep_minimum_runs: 0

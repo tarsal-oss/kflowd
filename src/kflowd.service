@@ -1,0 +1,16 @@
+[Unit]
+Description=kflowd
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=forking
+User=root
+Group=root
+#ExecStart=/usr/local/bin/kflowd -o json -v -c -u 1.2.3.4:2056,127.0.0.1:2057 -d
+ExecStart=/usr/local/bin/kflowd -o json -v -c -u 127.0.0.1:2057 -d
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

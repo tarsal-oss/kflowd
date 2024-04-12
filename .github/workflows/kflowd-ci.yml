@@ -1,0 +1,92 @@
+name: kflowd-ci
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-20.04
+    steps:
+    - name: 'Create Build Environment'
+      run:  |
+        sudo apt update
+        sudo apt install -y libz-dev libelf-dev libcap-dev libbfd-dev libc6-dev-i386 pkg-config
+        sudo wget https://apt.llvm.org/llvm.sh
+        sudo chmod u+x llvm.sh
+        echo | sudo ./llvm.sh 16
+        sudo apt install clang-tidy-16
+        sudo rm -f /usr/bin/clang
+        sudo ln -s /usr/bin/clang-16 /usr/bin/clang
+        sudo rm -f /usr/bin/clang-tidy
+        sudo ln -s /usr/bin/clang-tidy-16 /usr/bin/clang-tidy
+        sudo rm -f /usr/bin/llvm-strip
+        sudo ln -s /usr/bin/llvm-strip-16 /usr/bin/llvm-strip
+
+    - name: 'Clone Repository'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 'Update Submodules'
+      run: git submodule update --init --recursive
+
+    - name: 'Build'
+      run: |
+        cd src
+        make
+
+    - name: 'Check with Static Code Analyzer'
+      run: |
+        cd src
+        make check
+
+    - name: 'Build Packages'
+      run:  |
+        cd src
+        sudo echo -e "deb [trusted=yes] https://repo.goreleaser.com/apt/ /" | sudo tee /etc/apt/sources.list.d/goreleaser.list
+        sudo apt update
+        sudo apt install nfpm
+        make deb
+        make rpm
+
+    - name: 'Update Version'
+      run: |
+        VERSION=$(./bin/kflowd --version | cut -f2 -d\ )
+        git config user.name "GitHub Actions"
+        git config user.email "<>"
+        git checkout gh-stats
+        echo -e "{\"schemaVersion\": 1, \"label\": \"kflowd\", "\
+                "\"message\": \"$VERSION\", \"color\": \"blue\"}" > gh-stats-version.json
+        git add gh-stats-version.json
+        git commit -m "Updated json file to version $VERSION." || true
+        git push origin gh-stats
+
+    - name: 'Create Artifacts'
+      run: |
+        cd src
+        VERSION=$(../bin/kflowd --version | cut -f2 -d\ | cut -c2-)
+        mkdir -p kflowd-$VERSION/x86_64
+        cp ../bin/kflowd *.deb *rpm kflowd-$VERSION/x86_64
+        tar -czvf kflowd-$VERSION.tgz kflowd-$VERSION/x86_64
+        mkdir -p ../artifacts
+        mv *.tgz ../artifacts
+        echo -e "The tar archive contains the kflowd binary and DEB and RPM packages.\n"\
+                "Run the following commands to extract the archive and install kflowd on your distribution:\n"\
+                "  tar xzvf kflowd-$VERSION.tgz\n"\
+                "  cd kflowd-$VERSION/x86_64/\n"\
+                "  sudo apt install ./kflowd_${VERSION}_amd64.deb   # Debian\n"\
+                "  sudo dnf install ./kflowd-$VERSION.x86_64.rpm  # Redhat" > ../artifacts/README
+
+    - name: 'Name Artifacts'
+      run: |
+        cd src
+        echo "ARTIFACT=kflowd-$(../bin/kflowd --version | cut -f2 -d\ | cut -c2-)" >> $GITHUB_ENV
+
+    - name: 'Upload Artifacts'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.ARTIFACT }}
+        path: artifacts
