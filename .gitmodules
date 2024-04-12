@@ -1,0 +1,7 @@
+[submodule "libbpf"]
+	path = libbpf
+	url = https://github.com/libbpf/libbpf.git
+[submodule "plugins"]
+	path = plugins
+	url = git@github.com:kflowd/kflowd-plugins.git
+	update = none

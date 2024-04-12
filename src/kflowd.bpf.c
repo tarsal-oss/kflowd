@@ -1,10 +1,10 @@
 /*
  * kflowd.bpf.c
  *
- * Authors: Dirk Tennie <dirk@kflow.co>
- *          Barrett Lyon <blyon@kflow.co>
+ * Authors: Dirk Tennie <dirk@tarsal.co>
+ *          Barrett Lyon <blyon@tarsal.co>
  *
- * Copyright (c) 2024 Kflow.co
+ * Copyright 2024 (c) Tarsal, Inc
  *
  */
 #include "vmlinux.h"

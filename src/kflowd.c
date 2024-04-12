@@ -1,10 +1,10 @@
 /*
  * kflowd.c
  *
- * Authors: Dirk Tennie <dirk@kflow.co>
- *          Barrett Lyon <blyon@kflow.co>
+ * Authors: Dirk Tennie <dirk@tarsal.co>
+ *          Barrett Lyon <blyon@tarsal.co>
  *
- * Copyright (c) 2024 Kflow.co
+ * Copyright 2024 (c) Tarsal, Inc
  *
  */
 
@@ -39,13 +39,13 @@ static char title_str[] = "\e[1m  _     __ _                  _\n"
                           " | | __/ _| | _____      ____| |\n"
                           " | |/ / |_| |/ _ \\ \\ /\\ / / _` |\n"
                           " |   <|  _| | (_) \\ V  V / (_| |\n"
-                          " |_|\\_\\_| |_|\\___/ \\_/\\_/ \\__,_|\e[0m  by Kflow.co\n";
+                          " |_|\\_\\_| |_|\\___/ \\_/\\_/ \\__,_|\e[0m  by Tarsal.co\n";
 
-static char header_str[] = "\e[1;33mkflowd -- (c) 2024 Kflow.co\e[0m\n"
+static char header_str[] = "\e[1;33mkflowd -- (c) 2024 Tarsal, Inc\e[0m\n"
                            "\e[0;33mKernel-based Process Monitoring via eBPF subsystem (" VERSION ")\e[0m\n";
 static char usage_str[] =
     "Usage:\n"
-    "  kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|table] [-v] [-c]\n"
+    "  kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|json-min|table] [-v] [-c]\n"
     "         [-p dns=PROTO/PORT,...] [-p http=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V]\n"
     "         [-T TOKEN] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]\n"
     "  -m file,socket          Monitor only specified kernel subsystem (filesystem or sockets)\n"
@@ -61,9 +61,9 @@ static char usage_str[] =
     "                            (supported only for rpm- and deb-based package management)\n"
     "  -c                      Checksum hashes of MD5 and SHA256 calculated for executables\n"
     "  -p dns=PROTO/PORT,...   Port(s) examined for decoding of DNS application protocol\n"
-    "                            (default: dns=udp/53,tcp/53, disabled: dns=off)\n"
+    "                            (default: 'dns=udp/53,tcp/53', disabled: 'dns=off')\n"
     "  -p http=PROTO/PORT,...  Port(s) examined for decoding of HTTP application protocol\n"
-    "                            (default: http=tcp/80, disabled: http=off)\n"
+    "                            (default: 'http=tcp/80', disabled: 'http=off')\n"
     "  -u IP:PORT,...          UDP server(s) IPv4 or IPv6 address to send json output to.\n"
     "                          Output also printed to stdout console unless quiet option -q or\n"
     "                            daemon mode -d specified\n"

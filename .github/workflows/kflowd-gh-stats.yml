@@ -1,6 +1,7 @@
 name: kflowd-gh-stats
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '10 0 * * *'
 
@@ -11,7 +12,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - name: 'Clone Repository'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -33,9 +34,12 @@ jobs:
         git config user.email "<>"
         git checkout gh-stats
 
-        gh api -H "Accept: application/vnd.github+json" /repos/kflowd/kflowd/traffic/views > gh-stats-views-14d
+        gh api -H "Accept: application/vnd.github+json" /repos/tarsal-oss/kflowd/traffic/views > gh-stats-views-14d
         VIEWS_14D=$(jq ".count" gh-stats-views-14d)
         VIEWS_UNIQUE_14D=$(jq ".uniques" gh-stats-views-14d)
+        if ! [ -f gh-stats-views-all ]; then
+            echo "[]" > gh-stats-views-all
+        fi
         cp gh-stats-views-all all
         jq "[.views[]]" gh-stats-views-14d > 14d
         jq -s "add | sort_by(.timestamp,-.count) | unique_by(.timestamp) | reverse" 14d all > gh-stats-views-all
@@ -45,9 +49,12 @@ jobs:
         echo -e "{\"schemaVersion\": 1, \"label\": \"Unique 14d\", "\
                 "\"message\": \"$VIEWS_UNIQUE_14D of $VIEWS_14D\", \"color\": \"yellow\"}" > gh-stats-views-14d.json
 
-        gh api -H "Accept: application/vnd.github+json" /repos/kflowd/kflowd/traffic/clones > gh-stats-clones-14d
+        gh api -H "Accept: application/vnd.github+json" /repos/tarsal-oss/kflowd/traffic/clones > gh-stats-clones-14d
         CLONES_14D=$(jq ".count" gh-stats-clones-14d)
         CLONES_UNIQUE_14D=$(jq ".uniques" gh-stats-clones-14d)
+        if ! [ -f gh-stats-clones-all ]; then
+            echo "[]" > gh-stats-clones-all
+        fi
         cp gh-stats-clones-all all
         jq "[.clones[]]" gh-stats-clones-14d > 14d
         jq -s "add | sort_by(.timestamp,-.count) | unique_by(.timestamp) | reverse" 14d all > gh-stats-clones-all
@@ -67,7 +74,7 @@ jobs:
       uses: Mattraks/delete-workflow-runs@v2
       with:
         token: ${{ secrets.GH_STATS_TOKEN }}
-        repository: kflowd/kflowd
+        repository: tarsal-oss/kflowd
         delete_workflow_pattern: kflowd-gh-stats
         retain_days: 0
         keep_minimum_runs: 0
@@ -76,7 +83,7 @@ jobs:
       uses: Mattraks/delete-workflow-runs@v2
       with:
         token: ${{ secrets.GH_STATS_TOKEN }}
-        repository: kflowd/kflowd
+        repository: tarsal-oss/kflowd
         delete_workflow_pattern: pages-build-deployment
         retain_days: 0
         keep_minimum_runs: 0

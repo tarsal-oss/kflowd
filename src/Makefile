@@ -1,10 +1,10 @@
 #
 # Makefile for kflowd
 #
-# Authors: Dirk Tennie <dirk@kflow.co>
-#          Barrett Lyon <blyon@kflow.co>
+# Authors: Dirk Tennie <dirk@tarsal.co>
+#          Barrett Lyon <blyon@tarsal.co>
 #
-# Copyright (c) 2024 Kflow.co
+# Copyright 2024 (c) Tarsal, Inc
 #
 
 OUTPUT := .output
@@ -84,12 +84,12 @@ platform: linux
 version: $(PACKAGE_VERSION)
 provides:
 - kflowd
-maintainer: "Dirk Tennie <dirk@kflow.co>"
+maintainer: "Dirk Tennie <dirk@tarsal.co>"
 description: |
-  kflowd by kflow.co
+  kflowd by Tarsal.co
   Kernel-based process monitoring for Linux via eBPF
-vendor: kflow.co
-homepage: https://www.kflow.co
+vendor: Tarsal.co
+homepage: https://www.tarsal.co
 license: "GPL 2.0"
 contents:
 - src: ../bin/kflowd

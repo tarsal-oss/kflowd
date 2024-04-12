@@ -1,6 +1,6 @@
 <div align="right">
-<a href="#" target="_blank"><img src="https://img.shields.io/endpoint?url=https://kflowd.github.io/kflowd/gh-stats-version.json"/></a>
-<a href="https://github.com/kflowd/kflowd/actions/workflows/kflowd-ci.yml" target="_blank"><img src="https://github.com/kflowd/kflowd/actions/workflows/kflowd-ci.yml/badge.svg"/></a>
+<a href="#" target="_blank"><img src="https://img.shields.io/endpoint?url=https://tarsal-oss.github.io/kflowd/gh-stats-version.json"/></a>
+<a href="https://github.com/tarsal-oss/kflowd/actions/workflows/kflowd-ci.yml" target="_blank"><img src="https://github.com/tarsal-oss/kflowd/actions/workflows/kflowd-ci.yml/badge.svg"/></a>
 <a href="#license" target="_blank"><img src="https://img.shields.io/badge/License-GPL_v2-lightgrey.svg"/></a>
 </div>
 
@@ -11,14 +11,18 @@
 
 ## Kernel-based Process Monitoring on Linux Endpoints via eBPF
 
-### kflowd runs as agent on Linux endpoints to monitor processes via eBPF kernel subsystem for filesystem and TCP and UDP networking events to enable immediate threat and anomaly detection on suspicious activities.
-#### Advanced non-ebpf related features as DNS and HTTP application messsage decoding, checksum calculation for virus detection, process and file versioning for vulnerability detection and file device, network interface and user-group identification for files and processes can be enabled via open-binary plugin modules.
-
+### kflowd runs as agent on Linux endpoints to monitor processes via eBPF kernel subsystem for filesystem and TCP and UDP networking events, enabling immediate threat and anomaly detection on suspicious activities.
+#### Advanced non-ebpf related features such as DNS and HTTP application message decoding, checksum calculation for virus detection, process and file versioning for vulnerability detection and file device, network interface and user-group identification for files and processes can be enabled via open-binary plugin modules. The modules can be downloaded [here](https://tarsal.co/kflowd-download/) or please contact us at [kflow@tarsal.co](mailto:kflow@tarsal.co) for more details.
 kflowd contains an eBPF program running in kernel context and its control application running in userspace.<br>
 The eBPF program traces kernel functions to monitor processes based on file system and networking events. Events are aggregated into records and submitted into a ringbuffer where they are polled by the userspace control application. All Records are enriched with process information and then converted into a message in JSON output format.<br>
-Final messages are printed to stdout console and can be sent via UDP protocol to specified hosts for post-processing in the cloud.
+Final messages are printed to stdout console and can be sent via UDP protocol to specified hosts for ingestion in a security data pipeline.
 
 kflowd runs on Linux kernels 5.10+ and is built with the **libbpf+CO-RE** (Compile-Once-Run-Everywhere) eBPF development toolchain using **BTF** (BPF Type Format) to allow portability by avoiding dependencies on differences in kernel headers between kernel versions on deployment.
+<div align="left">
+<picture>
+<img src="https://github.com/tarsal-oss/kflowd/assets/108887718/50546c8e-33b1-44ba-a114-bd84519c1cc3" width="700">
+</picture>
+</div>
 
 ### JSON Output
 
@@ -36,7 +40,7 @@ kflowd outputs JSON messages generated for each record of aggregated file system
   "InfoHostIP": "38.110.1.24",
   "InfoSystem": "Linux",
   "InfoKernel": "6.1.0-10-amd64",
-  "InfoVersion": "kflowd-v1.2.50",
+  "InfoVersion": "kflowd-v0.9.1",
   "InfoUptime": 21.262713426,
   "ProcParent": "sshd",
   "Proc": "sftp-server",
@@ -92,7 +96,7 @@ kflowd outputs JSON messages generated for each record of aggregated file system
   "InfoHostIP": "38.110.1.24",
   "InfoSystem": "Linux",
   "InfoKernel": "6.1.0-10-amd64",
-  "InfoVersion": "kflowd-v1.2.50",
+  "InfoVersion": "kflowd-v0.9.1",
   "InfoUptime": 23.972984597,
   "ProcParent": "bash",
   "Proc": "curl",
@@ -180,7 +184,7 @@ kflowd outputs JSON messages generated for each record of aggregated file system
   "InfoHostIP": "38.110.1.24",
   "InfoSystem": "Linux",
   "InfoKernel": "6.1.0-10-amd64",
-  "InfoVersion": "kflowd-v1.2.50",
+  "InfoVersion": "kflowd-v0.9.1",
   "InfoUptime": 24.873001288,
   "ProcParent": "bash",
   "Proc": "curl",
@@ -292,7 +296,7 @@ For high performance UDP output the following kernel network settings are recomm
 ### Runtime Options
 ```
 Usage:
-  kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|table] [-v] [-c]
+  kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|json-min|table] [-v] [-c]
          [-p dns=PROTO/PORT,...] [-p http=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V]
          [-T TOKEN] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]
   -m file,socket          Monitor only specified kernel subsystem (filesystem or sockets)
@@ -308,9 +312,9 @@ Usage:
                             (supported only for rpm- and deb-based package management)
   -c                      Checksum hashes of MD5 and SHA256 calculated for executables
   -p dns=PROTO/PORT,...   Port(s) examined for decoding of DNS application protocol
-                            (default: dns=udp/53,tcp/53, disabled: dns=off)
+                            (default: 'dns=udp/53,tcp/53', disabled: 'dns=off')
   -p http=PROTO/PORT,...  Port(s) examined for decoding of HTTP application protocol
-                            (default: http=tcp/80, disabled: http=off)
+                            (default: 'http=tcp/80', disabled: 'http=off')
   -u IP:PORT,...          UDP server(s) IPv4 or IPv6 address to send json output to.
                           Output also printed to stdout console unless quiet option -q or
                             daemon mode -d specified
@@ -370,6 +374,14 @@ Examples:
       sudo ln -s /usr/bin/clang-16 /usr/bin/clang
       sudo ln -s /usr/bin/llvm-strip-16 /usr/bin/llvm-strip
       ```
+    - Install nfpm Linux packager:
+      ```
+      echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/
+            /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
+      sudo apt update
+      sudo apt install nfpm
+      ```
+
 - Redhat-based (Amazon Linux, Fedora)
 
     - Install libraries:
@@ -387,10 +399,19 @@ Examples:
       sudo yum install clang*
       sudo yum install llvm*
       ```
+    - Install nfpm Linux packager:
+      ```
+      echo '[goreleaser]
+            name=GoReleaser
+            baseurl=https://repo.goreleaser.com/yum/
+            enabled=1
+            gpgcheck=0' | sudo tee /etc/yum.repos.d/goreleaser.repo
+      sudo yum install nfpm
+      ```
 
 ### Build Instructions
 ```
-git clone https://github.com/kflowd/kflowd.git
+git clone https://github.com/tarsal-oss/kflowd.git
 cd kflowd
 git submodule update --init --recursive
 cd src
@@ -404,13 +425,13 @@ Packages can be installed on Linux x86_64 and arm64 based platforms:
 sudo yum install ./kflowd-x.x.x.<amd64 | aarch64>.rpm
 sudo apt install ./kflowd-x.x.x_<x86_64 | arm64>.deb
 ```
-Note that build artifacts for all versions on x86_64 platform can be downloaded under GitHub actions:
-[Pre-built binaries and rpm/deb packages](https://github.com/kflowd/kflowd/actions/workflows/kflowd-ci.yml)
+Note that build artifacts with binaries and packages of all versions for x86_64 (glibc 2.31+) platforms can be downloaded under GitHub Actions in the Artifacts section of the kflowd-ci workflow run:\
+[Pre-built x86_64 binaries, RPM and DEB packages (zipped)](https://github.com/tarsal-oss/kflowd/actions/workflows/kflowd-ci.yml)
 
 <br>
 
 ### License
-This work is licensed under [GNU General Public License v2.0](https://github.com/kflowd/kflowd/blob/master/LICENSE).
+This work is licensed under [GNU General Public License v2.0](https://github.com/tarsal-oss/kflowd/blob/master/LICENSE).
 ```
 SPDX-License-Identifier: GPL-2.0
 ```
@@ -423,9 +444,9 @@ SPDX-License-Identifier: GPL-2.0
 
 <br>
 <div align="right">
-<a href="https://github.com/kflowd/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://kflowd.github.io/kflowd/gh-stats-clones.json"/></a>
-<a href="https://github.com/kflowd/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://kflowd.github.io/kflowd/gh-stats-clones-14d.json"/></a>
+<a href="https://github.com/tarsal-oss/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://tarsal-oss.github.io/kflowd/gh-stats-clones.json"/></a>
+<a href="https://github.com/tarsal-oss/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://tarsal-oss.github.io/kflowd/gh-stats-clones-14d.json"/></a>
 <br>
-<a href="https://github.com/kflowd/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://kflowd.github.io/kflowd/gh-stats-views.json"/></a>
-<a href="https://github.com/kflowd/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://kflowd.github.io/kflowd/gh-stats-views-14d.json"/></a>
+<a href="https://github.com/tarsal-oss/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://tarsal-oss.github.io/kflowd/gh-stats-views.json"/></a>
+<a href="https://github.com/tarsal-oss/kflowd/graphs/traffic" target="_blank"><img src="https://img.shields.io/endpoint?url=https://tarsal-oss.github.io/kflowd/gh-stats-views-14d.json"/></a>
 </div>
