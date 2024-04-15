@@ -1,0 +1,22 @@
+[
+  {
+    "timestamp": "2024-04-15T00:00:00Z",
+    "count": 3,
+    "uniques": 1
+  },
+  {
+    "timestamp": "2024-04-14T00:00:00Z",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "timestamp": "2024-04-13T00:00:00Z",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "timestamp": "2024-04-12T00:00:00Z",
+    "count": 4,
+    "uniques": 2
+  }
+]
