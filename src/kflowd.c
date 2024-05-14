@@ -1263,8 +1263,8 @@ int main(int argc, char **argv) {
                 char dt[DATETIME_LEN_MAX];
                 strncpy(dt, DATETIME, DATETIME_LEN_MAX);
                 dt[11] = 0x20;
-                fprintf(stdout, "kflowd " VERSION " (built %s, Linux %s, clang %s, glibc %u.%u, libbpf %s)\n", dt,
-                        utsn.release, CLANG_VERSION, __GLIBC__, __GLIBC_MINOR__, LIBBPF_VERSION);
+                fprintf(stdout, "kflowd " VERSION " (built %s, Linux %s, %s, clang %s, glibc %u.%u, libbpf %s)\n", dt,
+                        utsn.release, ARCH, CLANG_VERSION, __GLIBC__, __GLIBC_MINOR__, LIBBPF_VERSION);
             }
             return 0;
         case '?':

@@ -14,7 +14,10 @@ LIBBPF_SRC := $(abspath ../libbpf/src)
 LIBBPF_OBJ := $(abspath $(OUTPUT)/libbpf.a)
 BINDIR := ../bin/
 ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
-BPFTOOL ?= $(abspath ../vmlinux/$(ARCH)/bpftool)
+BPFTOOL := $(abspath ../vmlinux/$(ARCH)/bpftool)
+ifeq ($(CROSS_COMPILE),aarch64-linux-gnu-)
+    ARCH := arm64
+endif
 VMLINUX := ../vmlinux/$(ARCH)/vmlinux.h
 GIT_VERSION := $(shell git describe --abbrev=4 --dirty --always --tags | cut -d '-' -f 1,2,4 | sed 's/-/./1')
 GLIBC_VERSION := ${shell ldd --version | head -n 1 | cut -d ')' -f2}
@@ -23,7 +26,7 @@ LIBBPF_VERSION := ${shell git submodule status ../libbpf | cut -d ' ' -f 4 | sed
 DATETIME := $(shell date +'%b-%d-%Y_%H:%M:%S%z')
 INCLUDES := -I$(OUTPUT) -I../libbpf/include/uapi -I$(dir $(VMLINUX))
 CFLAGS := -Wextra -g -std=gnu99 -Wall -DDATETIME=\"$(DATETIME)\" -DVERSION=\"$(GIT_VERSION)\"\
-          -DCLANG_VERSION=\"$(CLANG_VERSION)\" -DLIBBPF_VERSION=\"$(LIBBPF_VERSION)\"
+          -D ARCH=\"$(ARCH)\" -DCLANG_VERSION=\"$(CLANG_VERSION)\" -DLIBBPF_VERSION=\"$(LIBBPF_VERSION)\"
 CLANG_CHECKS := --checks=-*,clang-analyzer-*,-clang-analyzer-cplusplus* --warnings-as-errors=*
 LDFLAGS := -ldl
 ALL_LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
@@ -51,7 +54,7 @@ define allow-override
     $(eval $(1) = $(2)))
 endef
 
-$(call allow-override,CC,$(CROSS_COMPILE)cc)
+$(call allow-override,CC,$(CROSS_COMPILE)gcc)
 $(call allow-override,LD,$(CROSS_COMPILE)ld)
 
 .PHONY: all
@@ -124,7 +127,7 @@ export NFPM_PRE
 export NFPM_POST
 
 rpm deb: $(APPS)
-	$(eval PACKAGE_ARCH := $(shell uname -m | if test $@ = 'deb'; then sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/'; else cat; fi))
+	$(eval PACKAGE_ARCH := $(shell echo $(ARCH) | if test 'deb' = 'deb'; then sed 's/x86/amd64/'; else sed 's/x86/x86_64/' | sed 's/arm64/aarch64/'; fi))
 	$(eval PACKAGE_VERSION := $(shell ../bin/kflowd --version | cut -d ' ' -f2))
 	$(Q)echo "$$NFPM" > nfpm.yaml
 	$(Q)echo "$$NFPM_PRE" > preinstall.sh
@@ -140,7 +143,7 @@ $(OUTPUT) $(OUTPUT)/libbpf:
 
 # Build libbpf
 $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPUT)/libbpf
-	$(Q)$(MAKE) -C $(LIBBPF_SRC) BUILD_STATIC_ONLY=1\
+	$(Q)$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE)g -C $(LIBBPF_SRC) BUILD_STATIC_ONLY=1\
 		OBJDIR=$(dir $@)libbpf DESTDIR=$(dir $@)\
 		INCLUDEDIR= LIBDIR= UAPIDIR=\
 		install

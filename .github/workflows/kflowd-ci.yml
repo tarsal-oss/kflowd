@@ -26,6 +26,26 @@ jobs:
         sudo rm -f /usr/bin/llvm-strip
         sudo ln -s /usr/bin/llvm-strip-16 /usr/bin/llvm-strip
 
+    - name: 'Prepare Cross-Compilation'
+      run:  |
+        sudo apt install gcc-aarch64-linux-gnu
+        sudo dpkg --add-architecture arm64
+        sudo sed -i 's/^deb http/deb [arch=amd64,i386] http/g' /etc/apt/sources.list
+        # remove later
+        cat /etc/apt/sources.list
+        echo "deb [arch=arm64] http://ports.ubuntu.com/ focal main multiverse universe" | sudo tee -a /etc/apt/sources.list
+        echo "deb [arch=arm64] http://ports.ubuntu.com/ focal-security main multiverse universe" | sudo tee -a /etc/apt/sources.list
+        echo "deb [arch=arm64] http://ports.ubuntu.com/ focal-backports main multiverse universe" | sudo tee -a /etc/apt/sources.list
+        echo "deb [arch=arm64] http://ports.ubuntu.com/ focal-updates main multiverse universe" | sudo tee -a /etc/apt/sources.list
+        sudo apt update || true
+        sudo apt install libelf1:arm64
+        sudo apt install libz3-4:arm64
+        cd /usr/lib/aarch64-linux-gnu/
+        # remove later
+        sudo ls -la
+        sudo ln -s libelf.so.1 libelf.so
+        sudo ln -s libz.so.1 libz.so
+
     - name: 'Clone Repository'
       uses: actions/checkout@v4
       with:
@@ -48,7 +68,7 @@ jobs:
       run:  |
         cd src
         sudo echo -e "deb [trusted=yes] https://repo.goreleaser.com/apt/ /" | sudo tee /etc/apt/sources.list.d/goreleaser.list
-        sudo apt update
+        sudo apt update || true
         sudo apt install nfpm
         make deb
         make rpm
