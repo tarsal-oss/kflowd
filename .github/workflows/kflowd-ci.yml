@@ -13,12 +13,12 @@ jobs:
     steps:
     - name: 'Create Build Environment'
       run:  |
-        sudo apt update
+        sudo apt update -y
         sudo apt install -y libz-dev libelf-dev libcap-dev libbfd-dev libc6-dev-i386 pkg-config
         sudo wget https://apt.llvm.org/llvm.sh
         sudo chmod u+x llvm.sh
         echo | sudo ./llvm.sh 16
-        sudo apt install clang-tidy-16
+        sudo apt install -y clang-tidy-16
         sudo rm -f /usr/bin/clang
         sudo ln -s /usr/bin/clang-16 /usr/bin/clang
         sudo rm -f /usr/bin/clang-tidy
@@ -28,21 +28,17 @@ jobs:
 
     - name: 'Prepare Cross-Compilation'
       run:  |
-        sudo apt install gcc-aarch64-linux-gnu
+        sudo apt install -y gcc-aarch64-linux-gnu
         sudo dpkg --add-architecture arm64
         sudo sed -i 's/^deb http/deb [arch=amd64,i386] http/g' /etc/apt/sources.list
-        # remove later
-        cat /etc/apt/sources.list
         echo "deb [arch=arm64] http://ports.ubuntu.com/ focal main multiverse universe" | sudo tee -a /etc/apt/sources.list
         echo "deb [arch=arm64] http://ports.ubuntu.com/ focal-security main multiverse universe" | sudo tee -a /etc/apt/sources.list
         echo "deb [arch=arm64] http://ports.ubuntu.com/ focal-backports main multiverse universe" | sudo tee -a /etc/apt/sources.list
         echo "deb [arch=arm64] http://ports.ubuntu.com/ focal-updates main multiverse universe" | sudo tee -a /etc/apt/sources.list
-        sudo apt update || true
-        sudo apt install libelf1:arm64
-        sudo apt install libz3-4:arm64
+        sudo apt update -y || true
+        sudo apt install -y libelf1:arm64
+        sudo apt install -y libz3-4:arm64
         cd /usr/lib/aarch64-linux-gnu/
-        # remove later
-        sudo ls -la
         sudo ln -s libelf.so.1 libelf.so
         sudo ln -s libz.so.1 libz.so
 
@@ -57,7 +53,13 @@ jobs:
     - name: 'Build'
       run: |
         cd src
+        make CROSS_COMPILE=aarch64-linux-gnu-
+        mkdir -p arm64
+        mv ../bin/kflowd arm64/
+        make clean
         make
+        mkdir -p x86_64
+        mv ../bin/kflowd x86_64/
 
     - name: 'Check with Static Code Analyzer'
       run: |
@@ -68,10 +70,14 @@ jobs:
       run:  |
         cd src
         sudo echo -e "deb [trusted=yes] https://repo.goreleaser.com/apt/ /" | sudo tee /etc/apt/sources.list.d/goreleaser.list
-        sudo apt update || true
-        sudo apt install nfpm
-        make deb
-        make rpm
+        sudo apt update -y || true
+        sudo apt install -y nfpm
+        make clean
+        make deb rpm CROSS_COMPILE=aarch64-linux-gnu-
+        mv *.rpm *.deb arm64/
+        make clean
+        make deb rpm
+        mv *.rpm *.deb x86_64/
 
     - name: 'Update Version'
       run: |
@@ -89,17 +95,21 @@ jobs:
       run: |
         cd src
         VERSION=$(../bin/kflowd --version | cut -f2 -d\ | cut -c2-)
-        mkdir -p kflowd-$VERSION/x86_64
-        cp ../bin/kflowd *.deb *rpm kflowd-$VERSION/x86_64
-        tar -czvf kflowd-$VERSION.tgz kflowd-$VERSION/x86_64
+        mkdir -p kflowd-$VERSION
+        mv x86_64/ arm64/ kflowd-$VERSION/
+        tar -czvf kflowd-$VERSION.tgz kflowd-$VERSION
+        rm -rf kflowd-$VERSION
         mkdir -p ../artifacts
-        mv *.tgz ../artifacts
-        echo -e "The tar archive contains the kflowd binary and DEB and RPM packages.\n"\
-                "Run the following commands to extract the archive and install kflowd on your distribution:\n"\
-                "  tar xzvf kflowd-$VERSION.tgz\n"\
-                "  cd kflowd-$VERSION/x86_64/\n"\
-                "  sudo apt install ./kflowd_${VERSION}_amd64.deb   # Debian\n"\
-                "  sudo dnf install ./kflowd-$VERSION.x86_64.rpm  # Redhat" > ../artifacts/README
+        mv *.tgz ../artifacts/
+        echo -e " The tar archive contains the kflowd binary and DEB and RPM packages for x86_64 and arm64 platforms.\n"\
+                "After extracting the archive run the command matching your distribution and platform to install kflowd:\n\n"\
+                "tar xzvf kflowd-$VERSION.tgz\n\n"\
+                "cd kflowd-$VERSION/x86_64/\n"\
+                "sudo apt install ./kflowd_${VERSION}_amd64.deb    # Debian\n"\
+                "sudo yum install ./kflowd_$VERSION.x86_64.rpm   # Redhat\n\n"\
+                "cd kflowd-$VERSION/arm64/\n"\
+                "sudo apt install ./kflowd_${VERSION}_arm64.deb    # Debian\n"\
+                "sudo yum install ./kflowd-$VERSION.aarch64.rpm  # Redhat" > ../artifacts/README
 
     - name: 'Name Artifacts'
       run: |

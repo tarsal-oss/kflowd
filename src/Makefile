@@ -14,6 +14,7 @@ LIBBPF_SRC := $(abspath ../libbpf/src)
 LIBBPF_OBJ := $(abspath $(OUTPUT)/libbpf.a)
 BINDIR := ../bin/
 ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
+KERNEL := $(shell uname -r)
 BPFTOOL := $(abspath ../vmlinux/$(ARCH)/bpftool)
 ifeq ($(CROSS_COMPILE),aarch64-linux-gnu-)
     ARCH := arm64
@@ -25,7 +26,7 @@ CLANG_VERSION := ${shell clang --version | head -n 1 | sed 's/[^0-9.]*\([0-9.]*\
 LIBBPF_VERSION := ${shell git submodule status ../libbpf | cut -d ' ' -f 4 | sed 's/[v()]//g'}
 DATETIME := $(shell date +'%b-%d-%Y_%H:%M:%S%z')
 INCLUDES := -I$(OUTPUT) -I../libbpf/include/uapi -I$(dir $(VMLINUX))
-CFLAGS := -Wextra -g -std=gnu99 -Wall -DDATETIME=\"$(DATETIME)\" -DVERSION=\"$(GIT_VERSION)\"\
+CFLAGS := -Wextra -g -std=gnu99 -Wall -DDATETIME=\"$(DATETIME)\" -DVERSION=\"$(GIT_VERSION)\" -DKERNEL=\"$(KERNEL)\"\
           -D ARCH=\"$(ARCH)\" -DCLANG_VERSION=\"$(CLANG_VERSION)\" -DLIBBPF_VERSION=\"$(LIBBPF_VERSION)\"
 CLANG_CHECKS := --checks=-*,clang-analyzer-*,-clang-analyzer-cplusplus* --warnings-as-errors=*
 LDFLAGS := -ldl
@@ -84,7 +85,7 @@ define NFPM
 name: kflowd
 arch: $(PACKAGE_ARCH)
 platform: linux
-version: $(PACKAGE_VERSION)
+version: $(GIT_VERSION)
 provides:
 - kflowd
 maintainer: "Dirk Tennie <dirk@tarsal.co>"
@@ -128,7 +129,6 @@ export NFPM_POST
 
 rpm deb: $(APPS)
 	$(eval PACKAGE_ARCH := $(shell echo $(ARCH) | if test 'deb' = 'deb'; then sed 's/x86/amd64/'; else sed 's/x86/x86_64/' | sed 's/arm64/aarch64/'; fi))
-	$(eval PACKAGE_VERSION := $(shell ../bin/kflowd --version | cut -d ' ' -f2))
 	$(Q)echo "$$NFPM" > nfpm.yaml
 	$(Q)echo "$$NFPM_PRE" > preinstall.sh
 	$(Q)echo "$$NFPM_POST" > postinstall.sh

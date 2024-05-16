@@ -20,7 +20,7 @@ Final messages are printed to stdout console and can be sent via UDP protocol to
 kflowd runs on Linux kernels 5.10+ and is built with the **libbpf+CO-RE** (Compile-Once-Run-Everywhere) eBPF development toolchain using **BTF** (BPF Type Format) to allow portability by avoiding dependencies on differences in kernel headers between kernel versions on deployment.
 <div align="left">
 <picture>
-<img src="https://github.com/tarsal-oss/kflowd/assets/108887718/50546c8e-33b1-44ba-a114-bd84519c1cc3" width="700">
+<img src="https://github.com/tarsal-oss/kflowd/assets/108887718/e035cbae-f421-4221-ad9a-d64c90d3f249" width="800">
 </picture>
 </div>
 
@@ -421,11 +421,17 @@ make rpm deb
 
 ### Installation Instructions
 Packages can be installed on Linux x86_64 and arm64 based platforms:
+- Debian
 ```
-sudo yum install ./kflowd-x.x.x.<amd64 | aarch64>.rpm
-sudo apt install ./kflowd-x.x.x_<x86_64 | arm64>.deb
+sudo apt install ./kflowd_x.x.x_amd64.deb
+sudo apt install ./kflowd_x.x.x_arm64.deb
 ```
-Note that build artifacts with binaries and packages of all versions for x86_64 (glibc 2.31+) platforms can be downloaded under GitHub Actions in the Artifacts section of the kflowd-ci workflow run:\
+- Redhat
+```
+sudo yum install ./kflowd-x.x.x.x86_64.rpm
+sudo yum install ./kflowd-x.x.x.aarch64.rpm
+```
+Note that build artifacts with binaries and packages (glibc 2.31+) of all commits can be downloaded under GitHub Actions in the Artifacts section of the kflowd-ci workflow run:\
 [Pre-built x86_64 binaries, RPM and DEB packages (zipped)](https://github.com/tarsal-oss/kflowd/actions/workflows/kflowd-ci.yml)
 
 <br>
