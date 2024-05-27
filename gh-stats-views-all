@@ -1,5 +1,10 @@
 [
   {
+    "timestamp": "2024-05-26T00:00:00Z",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "timestamp": "2024-05-24T00:00:00Z",
     "count": 103,
     "uniques": 1
