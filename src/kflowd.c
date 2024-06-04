@@ -47,7 +47,7 @@ static char usage_str[] =
     "Usage:\n"
     "  kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|json-min|table] [-v] [-c]\n"
     "         [-p dns=PROTO/PORT,...] [-p http=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V]\n"
-    "         [-T TOKEN] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]\n"
+    "         [-T TOKEN] [-P PATH] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]\n"
     "  -m file,socket          Monitor only specified kernel subsystem (filesystem or sockets)\n"
     "                            (default: all, option omitted!)\n"
     "  -t IDLE,ACTIVE          Timeout in seconds for idle or active network sockets until export\n"
@@ -73,6 +73,7 @@ static char usage_str[] =
     "                            Print eBPF load and co-re messages on start of eBPF program\n"
     "                            to stderr console\n"
     "  -T TOKEN                Token specified on host to be included in json output\n"
+    "  -P PATH                 Path to search for kflowd plugin modules (default: '../lib/')\n"
     "  -l, --legend            Show legend\n"
     "  -h, --help              Show help\n"
     "      --version           Show version\n"
@@ -156,6 +157,7 @@ static struct CONFIG {
     int   app_port_num[APP_MAX];
     bool  verbose;
     char  token[TOKEN_LEN_MAX];
+    char  plugin_path[PATH_MAX];
     char  debug[DBG_LEN_MAX];
 } config = {0};
 
@@ -308,22 +310,30 @@ static int   udp_send_msg(char *, struct CONFIG *);
 static char *mkjson(enum MKJSON_CONTAINER_TYPE, int, ...);
 static char *mkjson_prettify(const char *, char *);
 
-/* plugin function definitions */
-typedef int                    plugin_dns_func(char *, int, struct APP_MSG_DNS *);
-typedef int                    plugin_http_func(char *, int, struct APP_MSG_HTTP *);
-typedef int                    plugin_virus_func(int, const char *, const char *, char *);
-typedef int                    plugin_vuln_func(struct bpf_map *, int *, char *, bool, char *);
-typedef int                    plugin_device_func(char **, char **);
-typedef int                    plugin_interface_func(char **);
-typedef int                    plugin_user_group_func(int, char **);
-static plugin_dns_func        *plugin_dns_decode;
-static plugin_http_func       *plugin_http_decode;
-static plugin_virus_func      *plugin_virus_get_checksum;
-static plugin_vuln_func       *plugin_vuln_version_cache;
-static plugin_device_func     *plugin_device_cache;
-static plugin_interface_func  *plugin_interface_cache;
-static plugin_user_group_func *plugin_user_group_cache;
-static void                   *plugin_handle;
+/* plugin function pointer definitions */
+static plugin_dns_func        *plugin_dns_decode = NULL;
+static plugin_http_func       *plugin_http_decode = NULL;
+static plugin_virus_func      *plugin_virus_get_checksum = NULL;
+static plugin_vuln_func       *plugin_vuln_version_cache = NULL;
+static plugin_device_func     *plugin_device_cache = NULL;
+static plugin_interface_func  *plugin_interface_cache = NULL;
+static plugin_user_group_func *plugin_user_group_cache = NULL;
+struct PLUGIN_INFO {
+    plugin_func *func;
+    char        *func_name;
+    char        *module;
+    char        *name;
+    char        *desc;
+} plugin[] = {
+    {&plugin_dns_decode, "plugin_dns_decode", "kflowd_mod_dns.so", "DNS", "DNS Decoder"},
+    {&plugin_http_decode, "plugin_http_decode", "kflowd_mod_http.so", "HTTP", "HTTP Decoder"},
+    {&plugin_virus_get_checksum, "plugin_virus_get_checksum", "kflowd_mod_virus.so", "Virus", "Virus Checksum"},
+    {&plugin_vuln_version_cache, "plugin_vuln_version_cache", "kflowd_mod_vuln.so", "Vuln",
+     "File/Process Version Vulnerability"},
+    {&plugin_device_cache, "plugin_device_cache", "kflowd_mod_device.so", "Device", "File Device Id"},
+    {&plugin_interface_cache, "plugin_interface_cache", "kflowd_mod_interface.so", "Interface", "Network Interface Id"},
+    {&plugin_user_group_cache, "plugin_user_group_cache", "kflowd_mod_user_group.so", "User-Group",
+     "File/Process User-Group Id"}};
 
 /* handle signal */
 static void sig_handler() {
@@ -1030,6 +1040,9 @@ int main(int argc, char **argv) {
     char                next_key_xfile[TASK_COMM_LEN] = {0};
     char                cmd_output[CMD_OUTPUT_LEN_MAX] = {0};
     char                cmd[CMD_LEN_MAX] = {0};
+    char                plugin_link[PATH_MAX + FILENAME_LEN_MAX];
+    char                plugin_file[PATH_MAX + FILENAME_LEN_MAX];
+    void                *plugin_handle;
     int                 kversion = 0;
     int                 kmajor = 0;
     int                 kminor = 0;
@@ -1062,10 +1075,11 @@ int main(int argc, char **argv) {
     config.app_proto[APP_HTTP][0] = IPPROTO_TCP;
     config.app_port[APP_HTTP][0] = HTTP_PORT;
     config.app_port_num[APP_HTTP] = 1;
+    snprintf(config.plugin_path, sizeof(config.plugin_path), "%s", PLUGIN_PATH);
 
     /* get system info and parse command line options */
     uname(&utsn);
-    while ((opt = getopt_long(argc, argv, ":m:e:t:o:vcp:u:qdT:lhVD:", longopts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, ":m:e:t:o:vcp:u:qdT:P:lhVD:", longopts, NULL)) != -1) {
         switch (opt) {
         case 'm':
             token = strtok(optarg, ",");
@@ -1242,6 +1256,13 @@ int main(int argc, char **argv) {
             strncpy(config.token, optarg, sizeof(config.token) - 1);
             argn += 2;
             break;
+        case 'P':
+            if (strlen(optarg) > sizeof(config.plugin_path) - 1)
+                usage("Invalid plugin path with too many characters specified");
+            snprintf(config.plugin_path, sizeof(config.plugin_path), "%s%s", optarg,
+                    optarg[strlen(optarg) - 1] != '/' ? "/" : "");
+            argn += 2;
+            break;
         case 'l':
             legend();
             break;
@@ -1314,27 +1335,12 @@ int main(int argc, char **argv) {
 
     /* try to load plugins */
     chdir(dirname(argv[0]));
-    plugin_handle = dlopen(PLUGIN_PATH PLUGIN_MOD_DNS, RTLD_LAZY);
-    if (!plugin_handle || !(plugin_dns_decode = dlsym(plugin_handle, "plugin_dns_decode")))
-        plugin_dns_decode = NULL;
-    plugin_handle = dlopen(PLUGIN_PATH PLUGIN_MOD_HTTP, RTLD_LAZY);
-    if (!plugin_handle || !(plugin_http_decode = dlsym(plugin_handle, "plugin_http_decode")))
-        plugin_http_decode = NULL;
-    plugin_handle = dlopen(PLUGIN_PATH PLUGIN_MOD_VIRUS, RTLD_LAZY);
-    if (!plugin_handle || !(plugin_virus_get_checksum = dlsym(plugin_handle, "plugin_virus_get_checksum")))
-        plugin_virus_get_checksum = NULL;
-    plugin_handle = dlopen(PLUGIN_PATH PLUGIN_MOD_VULN, RTLD_LAZY);
-    if (!plugin_handle || !(plugin_vuln_version_cache = dlsym(plugin_handle, "plugin_vuln_version_cache")))
-        plugin_vuln_version_cache = NULL;
-    plugin_handle = dlopen(PLUGIN_PATH PLUGIN_MOD_DEVICE, RTLD_LAZY);
-    if (!plugin_handle || !(plugin_device_cache = dlsym(plugin_handle, "plugin_device_cache")))
-        plugin_device_cache = NULL;
-    plugin_handle = dlopen(PLUGIN_PATH PLUGIN_MOD_INTERFACE, RTLD_LAZY);
-    if (!plugin_handle || !(plugin_interface_cache = dlsym(plugin_handle, "plugin_interface_cache")))
-        plugin_interface_cache = NULL;
-    plugin_handle = dlopen(PLUGIN_PATH PLUGIN_MOD_USER_GROUP, RTLD_LAZY);
-    if (!plugin_handle || !(plugin_user_group_cache = dlsym(plugin_handle, "plugin_user_group_cache")))
-        plugin_user_group_cache = NULL;
+    for(cnt=0; cnt<P_MAX; cnt++) {
+        snprintf(plugin_link, sizeof(plugin_link), "%s%s", config.plugin_path, plugin[cnt].module);
+        plugin_handle = dlopen(plugin_link, RTLD_LAZY);
+        if (!plugin_handle || !(*(plugin[cnt].func) = dlsym(plugin_handle, plugin[cnt].func_name)))
+            *(plugin[cnt].func) = NULL;
+    }
 
     /* set globals shared between user and kernel */
     clock_gettime(CLOCK_MONOTONIC, &spec);
@@ -1466,31 +1472,28 @@ int main(int argc, char **argv) {
     }
 
     /* print plugin status */
-    fprintf(stderr, "Plugin Modules:\n");
-    fprintf(stderr, "\e[0;%s\e[0m DNS:         %s DNS Decoder Module (kflowd_mod_dns.so)\n", plugin_dns_decode ? "32m[+]" : "33m[-]",
-            plugin_dns_decode ? "Loaded" : "NOT loaded");
-    fprintf(stderr, "\e[0;%s\e[0m HTTP:        %s HTTP Decoder Module (kflowd_mod_http.so)\n", plugin_http_decode ? "32m[+]" : "33m[-]",
-            plugin_http_decode ? "Loaded" : "NOT loaded");
-    fprintf(stderr, "\e[0;%s\e[0m Virus:       %s Virus Checksum Module (kflowd_mod_virus.so)\n", plugin_virus_get_checksum ? "32m[+]" : "33m[-]",
-            plugin_virus_get_checksum ? "Loaded" : "NOT loaded");
-    fprintf(stderr, "\e[0;%s\e[0m Vuln:        %s File/Process Version Vulnerability Module (kflowd_mod_vuln.so)\n", plugin_vuln_version_cache ? "32m[+]" : "33m[-]",
-            plugin_vuln_version_cache ? "Loaded" : "NOT loaded");
-    fprintf(stderr, "\e[0;%s\e[0m Device:      %s File Device Id Module (kflowd_mod_device.so)\n", plugin_device_cache ? "32m[+]" : "33m[-]",
-            plugin_device_cache ? "Loaded" : "NOT loaded");
-    fprintf(stderr, "\e[0;%s\e[0m Interface:   %s Network Interface Id Module (kflowd_mod_interface.so)\n", plugin_interface_cache ? "32m[+]" : "33m[-]",
-            plugin_interface_cache ? "Loaded" : "NOT loaded");
-    fprintf(stderr, "\e[0;%s\e[0m User-Group:  %s File/Process User-Group Id Module (kflowd_mod_user_group.so)\n", plugin_user_group_cache ? "32m[+]" : "33m[-]",
-            plugin_user_group_cache ? "Loaded" : "NOT loaded");
-
+    fprintf(stderr, "Plugin Modules (%s):\n", config.plugin_path);
+    for(cnt=0; cnt<P_MAX; cnt++) {
+        memset(plugin_file, 0, FILEPATH_LEN_MAX);
+        snprintf(plugin_link, sizeof(plugin_link), "%s%s", config.plugin_path, plugin[cnt].module);
+        fprintf(stderr, "\e[0;%s\e[0m \e[%s%s: %*s %s %s Module -> %s\e[0m\n",
+                *(plugin[cnt].func) ?  "32m[+]" : "33m[-]", *(plugin[cnt].func) ? "0m" : "37m", plugin[cnt].name,
+                10 - (int)strlen(plugin[cnt].name), "", *(plugin[cnt].func) ? "Loaded" : "NOT loaded", plugin[cnt].desc,
+                readlink(plugin_link, plugin_file, FILEPATH_LEN_MAX) > 0 ? plugin_file : plugin[cnt].module);
+    }
     fprintf(stderr, "\n");
 
     /* print config options and success */
     fprintf(stderr, "Configuration:\n");
     fprintf(stderr, "\e[0;32m[+]\e[0m Monitored kernel subsystem(s)\n");
-    fprintf(stderr, "\e[0;%s\e[0m   \e[%sFile System:     %7u max records at %lu bytes \e[0m\n", config.monitor & MONITOR_FILE ? "32m[+]" : "33m[-]",
-            ((config.monitor & MONITOR_FILE) || config.mode_daemon) ? "0m" : "0:37m", MAP_RECORDS_MAX, sizeof(struct RECORD_FS));
-    fprintf(stderr, "\e[0;%s\e[0m   \e[%sNetwork sockets: %7u max records at %lu bytes\e[0m\n", config.monitor & MONITOR_SOCK ? "32m[+]" : "33m[-]",
-            ((config.monitor & MONITOR_SOCK) || config.mode_daemon) ? "0m" : "0:37m", MAP_SOCKS_MAX, sizeof(struct RECORD_SOCK));
+    fprintf(stderr, "\e[0;%s\e[0m   \e[%sFile System:     %7u max records at %lu bytes \e[0m\n",
+            config.monitor & MONITOR_FILE ? "32m[+]" : "33m[-]",
+            ((config.monitor & MONITOR_FILE) || config.mode_daemon) ? "0m" : "0:37m",
+            MAP_RECORDS_MAX, sizeof(struct RECORD_FS));
+    fprintf(stderr, "\e[0;%s\e[0m   \e[%sNetwork sockets: %7u max records at %lu bytes\e[0m\n",
+            config.monitor & MONITOR_SOCK ? "32m[+]" : "33m[-]",
+            ((config.monitor & MONITOR_SOCK) || config.mode_daemon) ? "0m" : "0:37m",
+            MAP_SOCKS_MAX, sizeof(struct RECORD_SOCK));
     if (config.monitor & MONITOR_FILE) {
         fprintf(stderr, "\e[0;%s\e[0m Filesystem aggregation by PID+Inode until\n",
                 config.agg_events_max == 1 ? "33m[-]" : "32m[+]");

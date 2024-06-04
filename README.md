@@ -12,7 +12,7 @@
 ## Kernel-based Process Monitoring on Linux Endpoints via eBPF
 
 ### kflowd runs as agent on Linux endpoints to monitor processes via eBPF kernel subsystem for filesystem and TCP and UDP networking events, enabling immediate threat and anomaly detection on suspicious activities.
-#### Advanced non-ebpf related features such as DNS and HTTP application message decoding, checksum calculation for virus detection, process and file versioning for vulnerability detection and file device, network interface and user-group identification for files and processes can be enabled via open-binary plugin modules. The modules can be downloaded [here](https://tarsal.co/kflowd-download/) or please contact us at [kflow@tarsal.co](mailto:kflow@tarsal.co) for more details.
+#### Advanced non-ebpf related features such as DNS and HTTP application message decoding, checksum calculation for virus detection, process and file versioning for vulnerability detection and file device, network interface and user-group identification for files and processes can be enabled via open-binary plugin modules. These modules can be downloaded [here](https://tarsal.co/kflowd-download/) or please contact us at [kflow@tarsal.co](mailto:kflow@tarsal.co) for more details.
 kflowd contains an eBPF program running in kernel context and its control application running in userspace.<br>
 The eBPF program traces kernel functions to monitor processes based on file system and networking events. Events are aggregated into records and submitted into a ringbuffer where they are polled by the userspace control application. All Records are enriched with process information and then converted into a message in JSON output format.<br>
 Final messages are printed to stdout console and can be sent via UDP protocol to specified hosts for ingestion in a security data pipeline.
@@ -298,7 +298,7 @@ For high performance UDP output the following kernel network settings are recomm
 Usage:
   kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|json-min|table] [-v] [-c]
          [-p dns=PROTO/PORT,...] [-p http=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V]
-         [-T TOKEN] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]
+         [-T TOKEN] [-P PATH] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]
   -m file,socket          Monitor only specified kernel subsystem (filesystem or sockets)
                             (default: all, option omitted!)
   -t IDLE,ACTIVE          Timeout in seconds for idle or active network sockets until export
@@ -324,6 +324,7 @@ Usage:
                             Print eBPF load and co-re messages on start of eBPF program
                             to stderr console
   -T TOKEN                Token specified on host to be included in json output
+  -P PATH                 Path to search for kflowd plugin modules (default: '../lib/')
   -l, --legend            Show legend
   -h, --help              Show help
       --version           Show version
@@ -431,8 +432,8 @@ sudo apt install ./kflowd_x.x.x_arm64.deb
 sudo yum install ./kflowd-x.x.x.x86_64.rpm
 sudo yum install ./kflowd-x.x.x.aarch64.rpm
 ```
-Note that build artifacts with binaries and packages (glibc 2.31+) of all commits can be downloaded under GitHub Actions in the Artifacts section of the kflowd-ci workflow run:\
-[Pre-built x86_64 binaries, RPM and DEB packages (zipped)](https://github.com/tarsal-oss/kflowd/actions/workflows/kflowd-ci.yml)
+Note that build artifacts can be downloaded under GitHub Actions in the Artifacts section of the kflowd-ci workflow run with binaries and packages compatible for both x86_64 and arm64 platforms (glibc 2.31+):\
+[Pre-built binaries, RPM and DEB packages (zipped)](https://github.com/tarsal-oss/kflowd/actions/workflows/kflowd-ci.yml)
 
 <br>
 

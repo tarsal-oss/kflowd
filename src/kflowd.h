@@ -269,16 +269,6 @@ enum APP_TYPE { APP_DNS, APP_HTTP, APP_MAX };
 #define APP_MSG_LEN_MAX    1400
 #define APP_PORT_MAX       8
 
-/* define plugin default search path and module names */
-#define PLUGIN_PATH                "../lib/"
-#define PLUGIN_MOD_DNS             "kflowd_mod_dns.so"
-#define PLUGIN_MOD_HTTP            "kflowd_mod_http.so"
-#define PLUGIN_MOD_VIRUS           "kflowd_mod_virus.so"
-#define PLUGIN_MOD_VULN            "kflowd_mod_vuln.so"
-#define PLUGIN_MOD_DEVICE          "kflowd_mod_device.so"
-#define PLUGIN_MOD_INTERFACE       "kflowd_mod_interface.so"
-#define PLUGIN_MOD_USER_GROUP      "kflowd_mod_user_group.so"
-
 /* define macros for startup requirement checks */
 #define CHECK_MAX         3
 #define CHECK_MSG_LEN_MAX 64
@@ -658,6 +648,19 @@ struct XFILES {
     uint32_t mtime;
     int      truncated;
 };
+
+/* define plugins types, functions and search path */
+enum PLUGIN_TYPE { P_DNS, P_HTTP, P_VIRUS, P_VULN, P_DEVICE, P_INTERFACE, P_USER_GROUP, P_MAX };
+typedef int (*plugin_func)();
+typedef int plugin_dns_func(char *, int, struct APP_MSG_DNS *);
+typedef int plugin_http_func(char *, int, struct APP_MSG_HTTP *);
+typedef int plugin_virus_func(int, const char *, const char *, char *);
+struct bpf_map; /* eliminate compiler warning */
+typedef int plugin_vuln_func(struct bpf_map *, int *, char *, int, char *);
+typedef int plugin_device_func(char **, char **);
+typedef int plugin_interface_func(char **);
+typedef int plugin_user_group_func(int, char **);
+#define PLUGIN_PATH           "../lib/"
 
 /* define output types */
 #define JSON_SUB_KEY_MAX    16
