@@ -779,11 +779,6 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
     struct sock        *sock;
     char                comm[TASK_COMM_LEN] = {0};
     __u16               family;
-    __u8                addr[IP_ADDR_LEN_MAX];
-    __u16               lport;
-    __u16               rport;
-    __u8               *laddr;
-    __u8               *raddr;
     __u8                tcp_state_old;
     __u8                tcp_state;
     char               *func;
@@ -792,19 +787,11 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
     __u32               zero = 0;
     __u32               cnt;
 
-    /* ignore network events from self to prevent amplification loops */
-    if (pid_self == pid)
-        return 0;
-
     /* get socket event info */
     bpf_probe_read_kernel_str(comm, sizeof(comm), BPF_CORE_READ(task, mm, exe_file, f_path.dentry, d_name.name));
     sock = event->sock;
     family = event->family;
     func = event->func;
-
-    /* validate family */
-    if (!(family == AF_INET || family == AF_INET6))
-        return 0;
 
     /* handle tcp client and server sockets */
     if (event->args && !sock) {
@@ -813,10 +800,6 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
         /* get socket and ports */
         sock = (struct sock *)BPF_CORE_READ(args, skaddr);
         key = KEY_SOCK(BPF_CORE_READ(sock, __sk_common.skc_hash));
-        lport = BPF_CORE_READ(args, sport);
-        rport = BPF_CORE_READ(args, dport);
-        laddr = BPF_CORE_READ(args, saddr);
-        raddr = BPF_CORE_READ(args, daddr);
         stuple = bpf_map_lookup_elem(&heap_tuple, &zero);
         if (!stuple)
             return 0;
@@ -828,8 +811,8 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
             bpf_probe_read_kernel(stuple->laddr, sizeof(args->saddr_v6), BPF_CORE_READ(args, saddr_v6));
             bpf_probe_read_kernel(stuple->raddr, sizeof(args->daddr_v6), BPF_CORE_READ(args, daddr_v6));
         }
-        stuple->lport = lport;
-        stuple->rport = rport;
+        stuple->lport = BPF_CORE_READ(args, sport);
+        stuple->rport = BPF_CORE_READ(args, dport);
         stuple->proto = IPPROTO_TCP;
 
         /* get old and new tcp state */
@@ -843,15 +826,11 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
             bpf_printk("  PID: %u  SOCK: %p  KEY: %lx", pid, sock, key);
             bpf_printk("  PROTO: %u  FAMILY: %u ", IPPROTO_TCP, family);
             if (family == AF_INET) {
-                bpf_probe_read_kernel(addr, sizeof(args->saddr), BPF_CORE_READ(args, saddr));
-                bpf_printk("  LOCAL:  %pI4:%u", addr, lport);
-                bpf_probe_read_kernel(addr, sizeof(args->daddr), BPF_CORE_READ(args, daddr));
-                bpf_printk("  REMOTE: %pI4:%u", addr, rport);
+                bpf_printk("  LOCAL:  %pI4:%u", stuple->laddr, stuple->lport);
+                bpf_printk("  REMOTE: %pI4:%u", stuple->raddr, stuple->rport);
             } else {
-                bpf_probe_read_kernel(addr, sizeof(args->saddr_v6), BPF_CORE_READ(args, saddr_v6));
-                bpf_printk("  LOCAL:  %pI6c:%u", addr, lport);
-                bpf_probe_read_kernel(addr, sizeof(args->daddr_v6), BPF_CORE_READ(args, daddr_v6));
-                bpf_printk("  REMOTE: %pI6c:%u", addr, rport);
+                bpf_printk("  LOCAL:  %pI6c:%u", stuple->laddr, stuple->lport);
+                bpf_printk("  REMOTE: %pI6c:%u", stuple->raddr, stuple->rport);
             }
         }
 
@@ -940,8 +919,7 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
             bpf_probe_read_kernel_str(&sinfo->comm_parent, sizeof(sinfo->comm_parent),
                                       BPF_CORE_READ(task, real_parent, mm, exe_file, f_path.dentry, d_name.name));
             sinfo->ts_proc = BPF_CORE_READ(task, start_time);
-            /* calculate alternate key for tuple without local port since no kernel socket hash at this point */
-            stuple->lport = 0;
+            /* calculate alternate key for tuple since no kernel socket hash at this point */
             sinfo->app_msg.cnt = 0;
             key_alt = crc64(0, (const u8 *)stuple, sizeof(*stuple));
             if (!bpf_map_update_elem(&hash_socks, &key_alt, sinfo, BPF_ANY)) {
@@ -952,22 +930,15 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
                            pid);
         } else if (tcp_state_old == TCP_SYN_SENT && tcp_state == TCP_ESTABLISHED) {
             /* get alternate key based on tuple without local port */
-            stuple->lport = 0;
             key_alt = crc64(0, (const u8 *)stuple, sizeof(*stuple));
-            stuple->lport = lport;
             sinfo = bpf_map_lookup_elem(&hash_socks, &key_alt);
             if (!sinfo || sinfo->sock != sock)
                 return 0;
             sinfo->state = tcp_state;
-            if (sinfo->family == AF_INET) {
-                bpf_probe_read_kernel(sinfo->laddr, sizeof(args->saddr), BPF_CORE_READ(args, saddr));
-                bpf_probe_read_kernel(sinfo->raddr, sizeof(args->daddr), BPF_CORE_READ(args, daddr));
-            } else {
-                bpf_probe_read_kernel(sinfo->laddr, sizeof(args->saddr_v6), BPF_CORE_READ(args, saddr_v6));
-                bpf_probe_read_kernel(sinfo->raddr, sizeof(args->daddr_v6), BPF_CORE_READ(args, daddr_v6));
-            }
-            sinfo->lport = BPF_CORE_READ(args, sport);
-            sinfo->rport = BPF_CORE_READ(args, dport);
+            bpf_probe_read_kernel(sinfo->laddr, sizeof(stuple->laddr), stuple->laddr);
+            bpf_probe_read_kernel(sinfo->raddr, sizeof(stuple->raddr), stuple->raddr);
+            sinfo->lport = stuple->lport;
+            sinfo->rport = stuple->rport;
 
             /* add new tcp client socket */
             if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY) &&
@@ -993,7 +964,7 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
                                key, sinfo->pid);
             } else
                 bpf_printk("WARNING: Failed tcp socket lookup for key %lx and remote host %x:%u", key,
-                           *((__u32 *)raddr), rport);
+                           *((__u32 *)stuple->raddr), stuple->rport);
         } else if (debug_proc(comm, NULL))
             bpf_printk("Pass tcp state change for pid %u\n", pid);
     } else {

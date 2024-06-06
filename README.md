@@ -5,8 +5,8 @@
 </div>
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/108887718/211927677-8de51731-1bed-4091-8475-954da95b845d.png" align="left" width="80px"/>
-<img src="https://user-images.githubusercontent.com/108887718/217375605-b22fff83-abc5-4244-b36d-34989ed209a9.png" align="left" width="80px"/>
+<source media="(prefers-color-scheme: dark)" srcset="https://github.com/tarsal-oss/kflowd/assets/108887718/d2d59b0d-947a-4f76-ac7e-db121974fc58" width="240px"/>
+<img src="https://github.com/tarsal-oss/kflowd/assets/108887718/fdf5f7de-9c9f-43e0-8f39-068f9b71a9f1" width="240px"/>
 </picture>
 
 ## Kernel-based Process Monitoring on Linux Endpoints via eBPF
