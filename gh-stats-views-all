@@ -1,8 +1,13 @@
 [
   {
+    "timestamp": "2024-06-29T00:00:00Z",
+    "count": 85,
+    "uniques": 58
+  },
+  {
     "timestamp": "2024-06-28T00:00:00Z",
-    "count": 63,
-    "uniques": 15
+    "count": 65,
+    "uniques": 17
   },
   {
     "timestamp": "2024-06-27T00:00:00Z",
