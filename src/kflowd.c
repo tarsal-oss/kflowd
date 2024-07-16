@@ -604,14 +604,15 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
             char                *app_rx_msg[APP_MSG_MAX] = {0};
             int                  app_tx_msg_cnt = 0;
             int                  app_rx_msg_cnt = 0;
-            char                *msg = NULL;
 
             /* decode first tx and then rx messages */
             for (cntm = 0; cntm < app_msg->cnt * 2; cntm++) {
                 struct APP_MSG_DNS   dns = {0};
                 struct APP_MSG_HTTP  http = {0};
+                char *msg = NULL;
                 int mc = app_msg->cnt;
                 int idx = cntm % mc;
+
                 if ((app_msg->isrx[idx] && cntm < mc) || (!app_msg->isrx[idx] && cntm >= mc))
                     continue;
                 ofs = (rs->proto == IPPROTO_TCP ? 2 : 0); /* for dns over tcp omit first 2 bytes contaiing length */
@@ -666,11 +667,10 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                         dns.flags.qr ? J_UINT : J_IGN_UINT, "AnswerCount", dns.ancount,
                         J_JSON, "ResourceRecords", dns_rr[0] ? dns_rr : "[]");
                 } else if (app_msg->type == APP_DNS) {
-                    msg = mkjson(MKJ_OBJ, 1,
-                        J_STRING, "_Exception", "ERROR");
+                    msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "DNS Message Decoder");
                 }
                 else if (app_msg->type == APP_HTTP && !plugin_http_decode(app_msg->data[idx], app_msg->len[idx], &http)) {
-                    int msg_size = APP_MSG_LEN_MAX;
+                    int msg_size = APP_MSG_LEN_MAX / app_msg->cnt;
                     snprintf(ts1, sizeof(ts1), "%.09f", (app_msg->ts[idx] - r->ts_first) / 1e9);
                     char *msg_http = mkjson(MKJ_OBJ, 6,
                         J_TIMESTAMP, "_Timestamp", app_msg->ts[idx] - r->ts_first ? ts1 : "0",
@@ -679,44 +679,42 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                         strlen(http.version) ? J_STRING : J_IGN_STRING, "_Version", http.version,
                         http.status ? J_UINT : J_IGN_UINT, "_Status", http.status,
                         strlen(http.reason) ? J_STRING : J_IGN_STRING, "_Reason", http.reason);
-                    msg = calloc(msg_size, sizeof(char));
-                    snprintf(msg, msg_size, "%s", msg_http);
-                    free(msg_http);
-                    for (cnth = 0; cnth < HTTP_HEADERS_MAX; cnth++) {
-                        if (!http.header_name[cnth][0])
-                            break;
+                    len = strlen(msg_http);
+                    if(len && len < msg_size && msg_http[len - 1] == '}') {
+                        msg_http[len - 1] = 0; /* remove closed brace */
+                        msg = calloc(msg_size, sizeof(char));
+                        snprintf(msg, msg_size, "%s", msg_http);
+                        free(msg_http);
+                        for (cnth = 0; cnth < HTTP_HEADERS_MAX; cnth++) {
+                            if (!http.header_name[cnth][0])
+                                break;
+                            len = strlen(msg);
+                            if(msg_size - len - 1 > (int)strlen(http.header_name[cnth]) + (int)strlen(http.header_value[cnth]) + 32)
+                                snprintf(msg + len, msg_size - len, ", \"%s\": \"%s\"", http.header_name[cnth], http.header_value[cnth]);
+                        }
+                        if(strlen(http.body)) {
+                            len = strlen(msg);
+                            if(msg_size - len - 1 > (int)strlen(http.body) + 32)
+                                snprintf(msg + len , msg_size - len, ", \"_Body\": \"%s\"", http.body);
+                        }
                         len = strlen(msg);
-                        if(!cnth)
-                            len -= 1;
-                        if(msg_size - len - 1 > (int)strlen(http.header_name[cnth]) + (int)strlen(http.header_value[cnth]) + 32)
-                            snprintf(msg + len, msg_size - len, ", \"%s\": \"%s\"", http.header_name[cnth], http.header_value[cnth]);
+                        snprintf(msg + len, msg_size - len, "}");
                     }
-                    if(strlen(http.body)) {
-                        len = strlen(msg);
-                        if(msg_size - len - 1 > (int)strlen(http.body) + 32)
-                            snprintf(msg + len , msg_size - len, ", \"_Body\": \"%s\"", http.body);
-                    }
-                    len = strlen(msg);
-                    snprintf(msg + len, msg_size - len, "}");
-                } else if (app_msg->type == APP_HTTP) {
-                    if(idx > 1)
-                        msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Fragmentation");
                     else
-                        msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "ERROR");
+                        fprintf(stderr, "Invalid http message with len %u and index %u out of %u discarded: %s\n", len, idx, app_msg->cnt, msg_http);
+                } else if (app_msg->type == APP_HTTP) {
+                    msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Decoder");
                 }
 
-                if(cntm < mc) {
-                    if(app_tx_msg_cnt < APP_MSG_MAX)
+                if(msg) {
+                    if(cntm < mc)
                         app_tx_msg[app_tx_msg_cnt++] = msg;
                     else
-                        break;
-                }
-                else {
-                    if(app_rx_msg_cnt < APP_MSG_MAX)
                         app_rx_msg[app_rx_msg_cnt++] = msg;
-                    else
-                        break;
                 }
+                else
+                    fprintf(stderr, "Ignored %s application message with index %u out of %u\n", app_msg->type == APP_HTTP ?
+                        "http" : (app_msg->type == APP_DNS ? "dns" : "unknown"), idx, app_msg->cnt);
             }
 
             /* tx and rx message list */
@@ -1733,7 +1731,7 @@ static char *mkjson_prettify(const char *s, char *r) {
 
     /* iterate over JSON string.*/
     for (const char *x = s; *x != '\0'; x++) {
-        if (*x == '"')
+        if (*x == '"' && (x == s || *(x - 1) != '\\'))
             quoted = !quoted;
         if (quoted) {
             *r++ = *x;

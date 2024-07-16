@@ -943,9 +943,17 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
             key_alt = crc64(0, (const u8 *)stuple, sizeof(*stuple));
             sinfo = bpf_map_lookup_elem(&hash_socks, &key_alt);
             if (!sinfo || sinfo->sock != sock) {
-                bpf_printk("WARNING: Failed lookup to add tcp client socket for alt key %lx and pid %u\n", key_alt,
-                           pid);
-                return 0;
+                /* try again without lport */
+                u16 lport = stuple->lport;
+                stuple->lport = 0;
+                key_alt = crc64(0, (const u8 *)stuple, sizeof(*stuple));
+                stuple->lport = lport;
+                sinfo = bpf_map_lookup_elem(&hash_socks, &key_alt);
+                if (!sinfo || sinfo->sock != sock) {
+                    bpf_printk("WARNING: Failed lookup to add tcp client socket for alt key %lx and pid %u\n", key_alt,
+                               pid);
+                    return 0;
+                }
             }
             sinfo->state = tcp_state;
             bpf_probe_read_kernel(sinfo->laddr, sizeof(stuple->laddr), stuple->laddr);
@@ -960,13 +968,14 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
                     bpf_printk("Added new tcp client socket for alt key %lx, key %lx and pid %u\n", key_alt, key,
                                sinfo->pid);
             } else
-                bpf_printk("WARNING: Failed to add new tcp client socket for alt key %lx and pid %u\n", key_alt,
-                           sinfo->pid);
+                bpf_printk("WARNING: Failed to add new tcp client socket for alt key %lx, key %lx and pid %u\n",
+                           key_alt, key, sinfo->pid);
         } else if ((tcp_state_old == TCP_LAST_ACK && tcp_state == TCP_CLOSE) ||
                    (tcp_state_old == TCP_FIN_WAIT2 && tcp_state == TCP_CLOSE)) {
             sinfo = bpf_map_lookup_elem(&hash_socks, &key);
             if (!sinfo || sinfo->sock != sock) {
-                bpf_printk("WARNING: Failed lookup to delete tcp socket for key %lx and pid %u", key, pid);
+                bpf_printk("WARNING: Failed lookup to delete tcp socket for key %lx, lport %u and pid %u", key,
+                           stuple->lport, pid);
                 return 0;
             }
             /* submit final record and delete closed client and server sockets */
@@ -1029,7 +1038,7 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
         /* update hash tables */
         if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
             if (debug_proc(sinfo->comm, NULL))
-                bpf_printk("Added new tcp server socket for key %lx and pid %u\n", key, pid);
+                bpf_printk("Added new tcp server socket for key %lx, rport %u and pid %u\n", key, sinfo->rport, pid);
         } else
             bpf_printk("WARNING: Failed to add new tcp server socket for key %lx and pid %u\n", key, pid);
     }
@@ -1498,7 +1507,7 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
                 bpf_probe_read_kernel(sinfo->app_msg.data[num], MIN((__u16)data_len, sizeof(sinfo->app_msg.data[num])),
                                       dnshdr);
                 /* export record on max application messages */
-                if (sinfo->app_msg.cnt == APP_MSG_MAX) {
+                if (sinfo->app_msg.cnt >= APP_MSG_MAX) {
                     submit_sock_record(sinfo);
                     if (bpf_map_delete_elem(&hash_socks, &key))
                         bpf_printk("WARNING: Failed to delete %s socket for key %lx and pid %u\n",
@@ -1848,18 +1857,18 @@ int handle_skb(struct __sk_buff *skb) {
     stuple->proto = proto;
     pkey = bpf_map_lookup_elem(&hash_tuples, stuple);
     if (!pkey) {
-        bpf_printk("WARNING: Failed to lookup tcp socket for tuple\n");
+        bpf_printk("WARNING: Failed to lookup tcp socket tuple for lport %u and rport %u\n", lport, rport);
         return skb->len;
     }
     bpf_probe_read_kernel(&key, sizeof(key), pkey);
     sinfo = bpf_map_lookup_elem(&hash_socks, &key);
     if (!sinfo) {
-        bpf_printk("WARNING: Failed to lookup tcp socket %lx\n", key);
+        bpf_printk("WARNING: Failed to lookup tcp socket key %lx for lport %u and rport %u\n", key, lport, rport);
         return skb->len;
     }
 
     /* capture payloads */
-    num = sinfo->app_msg.cnt++;
+    num = sinfo->app_msg.cnt;
     if (num >= APP_MSG_MAX) {
         bpf_printk("WARNING: Failed to capture %u application messages\n", num);
         return skb->len;
@@ -1869,6 +1878,7 @@ int handle_skb(struct __sk_buff *skb) {
     sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
     sinfo->app_msg.len[num] = data_len;
     sinfo->app_msg.isrx[num] = isrx;
+    sinfo->app_msg.cnt++;
     bpf_skb_load_bytes(skb, data_ofs, sinfo->app_msg.data[num], MIN(data_len, sizeof(sinfo->app_msg.data[num]) - 1));
     if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
         if (debug_proc(sinfo->comm, NULL))
@@ -1878,7 +1888,7 @@ int handle_skb(struct __sk_buff *skb) {
                    sinfo->pid);
 
     /* submit record on application message limit */
-    if (sinfo->app_msg.cnt == APP_MSG_MAX) {
+    if (sinfo->app_msg.cnt >= APP_MSG_MAX) {
         submit_sock_record(sinfo);
         if (debug_proc(sinfo->comm, NULL))
             bpf_printk("Submitted %s socket due to app message limit for key %lx and pid %u\n",
