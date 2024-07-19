@@ -1775,41 +1775,83 @@ int handle_skb(struct __sk_buff *skb) {
     __u32              cnt;
     __u32              cntp;
     __u32              cnta;
+    __u32              cntl = 0;
     __u8               num;
+    bool               isrx = (skb->ingress_ifindex == skb->ifindex);
     bool               found = false;
 
-    /* get ethernet protocol */
+    /* get address family from ethernet protocol */
     bpf_skb_load_bytes(skb, 12, &eth_proto, 2);
     eth_proto = __bpf_ntohs(eth_proto);
-    if (eth_proto != ETH_P_IP)
-        return skb->len;
-    // tbd: AF_INET6
-    family = AF_INET;
-
-    /* check fragmentation */
-    bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, frag_off), &frag_ofs, 2);
-    frag_ofs = __bpf_ntohs(frag_ofs);
-    if (frag_ofs & (IP_MF | IP_OFFMASK))
+    if (eth_proto == ETH_P_IP)
+        family = AF_INET;
+    else if (eth_proto == ETH_P_IPV6)
+        family = AF_INET6;
+    else
         return skb->len;
 
-    /* get ip protocol */
-    bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, protocol), &proto, 1);
-    if (proto != IPPROTO_TCP)
-        return skb->len;
+    if (family == AF_INET) {
+        /* check fragmentation */
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, frag_off), &frag_ofs, 2);
+        frag_ofs = __bpf_ntohs(frag_ofs);
+        if (frag_ofs & (IP_MF | IP_OFFMASK))
+            return skb->len;
 
-    /* get ip header len */
-    bpf_skb_load_bytes(skb, ETH_HLEN, &iphdr_len, sizeof(iphdr_len));
-    iphdr_len &= 0x0f;
-    iphdr_len *= 4;
-    if (iphdr_len < sizeof(struct iphdr))
-        return skb->len;
+        /* get ip protocol */
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, protocol), &proto, 1);
+        if (proto != IPPROTO_TCP)
+            return skb->len;
 
-    /* get ip source and dest addresses */
-    bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, tot_len), &ip_len, sizeof(ip_len));
-    ip_len = __bpf_ntohs(ip_len);
-    bool isrx = (skb->ingress_ifindex == skb->ifindex);
-    bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, saddr), isrx ? raddr : laddr, 4);
-    bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, daddr), isrx ? laddr : raddr, 4);
+        /* get ip header len */
+        bpf_skb_load_bytes(skb, ETH_HLEN, &iphdr_len, sizeof(iphdr_len));
+        iphdr_len &= 0x0f;
+        iphdr_len *= 4;
+        if (iphdr_len < sizeof(struct iphdr))
+            return skb->len;
+
+        /* get ip source and dest addresses */
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, tot_len), &ip_len, sizeof(ip_len));
+        ip_len = __bpf_ntohs(ip_len);
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, saddr), isrx ? raddr : laddr, 4);
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, daddr), isrx ? laddr : raddr, 4);
+    } else {
+        iphdr_len = sizeof(struct ipv6hdr);
+        __u8 lenhdr;
+        __u8 nexthdr;
+
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct ipv6hdr, nexthdr), &nexthdr, 1);
+        for (cntl = 0; cntl < 8; cntl++) {
+            if (nexthdr == IPV6_NH_TCP)
+                break;
+            else if (nexthdr == IPV6_NH_UDP)
+                return skb->len;
+            switch (nexthdr) {
+            case IPV6_NH_HOP:
+            case IPV6_NH_ROUTING:
+            case IPV6_NH_AUTH:
+            case IPV6_NH_NONE:
+            case IPV6_NH_DEST:
+                bpf_skb_load_bytes(skb, ETH_HLEN + iphdr_len, &nexthdr, 1);
+                bpf_skb_load_bytes(skb, ETH_HLEN + iphdr_len + 1, &lenhdr, 1);
+                iphdr_len += (lenhdr + 1) * 8;
+                break;
+            case IPV6_NH_FRAGMENT:
+                return skb->len;
+            default:
+                return skb->len;
+            }
+            if (!nexthdr) {
+                return skb->len;
+            }
+        }
+
+        /* get ipv6 source and dest addresses */
+        proto = IPPROTO_TCP;
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct ipv6hdr, payload_len), &ip_len, sizeof(ip_len));
+        ip_len = __bpf_ntohs(ip_len) + iphdr_len;
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct ipv6hdr, saddr), isrx ? raddr : laddr, IP_ADDR_LEN_MAX);
+        bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct ipv6hdr, daddr), isrx ? laddr : raddr, IP_ADDR_LEN_MAX);
+    }
 
     /* get tcp source and dest ports */
     tcphdr_ofs = ETH_HLEN + iphdr_len;
