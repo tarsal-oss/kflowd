@@ -820,6 +820,8 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
         stuple->lport = BPF_CORE_READ(args, sport);
         stuple->rport = BPF_CORE_READ(args, dport);
         stuple->proto = IPPROTO_TCP;
+        if (bpf_map_update_elem(&hash_tuples, stuple, &key, BPF_ANY))
+            bpf_printk("WARNING: Failed to update client/server stuple for key %lx and pid %u\n", key, pid);
 
         /* get old and new tcp state */
         tcp_state_old = BPF_CORE_READ(args, oldstate);
@@ -877,8 +879,7 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
             sinfo->tx_flags_map[0] = TCP_SYN | TCP_ACK;
             sinfo->tx_flags_map_cnt = 1;
             sinfo->app_msg.cnt = 0;
-            if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY) &&
-                !bpf_map_update_elem(&hash_tuples, stuple, &key, BPF_ANY)) {
+            if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
                 if (debug_proc(sinfo->comm, NULL))
                     bpf_printk("Prepared new tcp server socket for pid %u\n", pid);
             } else
@@ -962,8 +963,7 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
             sinfo->rport = stuple->rport;
 
             /* add new tcp client socket */
-            if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY) &&
-                !bpf_map_update_elem(&hash_tuples, stuple, &key, BPF_ANY)) {
+            if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
                 if (debug_proc(sinfo->comm, NULL))
                     bpf_printk("Added new tcp client socket for alt key %lx, key %lx and pid %u\n", key_alt, key,
                                sinfo->pid);
@@ -1034,6 +1034,20 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
                 bpf_printk("  REMOTE: %pI6c:%u", sinfo->raddr, sinfo->rport);
             }
         }
+
+        /* set tuple */
+        stuple = bpf_map_lookup_elem(&heap_tuple, &zero);
+        if (!stuple) {
+            bpf_printk("WARNING: Failed to allocate new tuple for pid %u\n", pid);
+            return 0;
+        }
+        bpf_probe_read_kernel(stuple->laddr, sizeof(stuple->laddr), sinfo->laddr);
+        bpf_probe_read_kernel(stuple->raddr, sizeof(stuple->raddr), sinfo->raddr);
+        stuple->lport = sinfo->lport;
+        stuple->rport = sinfo->rport;
+        stuple->proto = IPPROTO_TCP;
+        if (bpf_map_update_elem(&hash_tuples, stuple, &key, BPF_ANY))
+            bpf_printk("WARNING: Failed to update tcp server stuple for key %lx and pid %u\n", key, pid);
 
         /* update hash tables */
         if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
@@ -1353,7 +1367,6 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
     struct ipv6hdr         *ipv6hdr = NULL;
     struct udphdr          *udphdr;
     struct SOCK_INFO       *sinfo;
-    struct SOCK_TUPLE      *stuple;
     struct SOCK_QUEUE       sq = {0};
     struct STATS           *s;
     __u16                   gso_segs;
@@ -1536,9 +1549,8 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
     } else {
         /* populate new socket and pid data */
         sinfo = bpf_map_lookup_elem(&heap_sock, &zero);
-        stuple = bpf_map_lookup_elem(&heap_tuple, &zero);
-        if (!sinfo || !stuple) {
-            bpf_printk("WARNING: Failed to allocate new udp socket or tuple for pid %u\n", pid);
+        if (!sinfo) {
+            bpf_printk("WARNING: Failed to allocate new udp socket for pid %u\n", pid);
             return 0;
         }
         sinfo->sock = sock;
@@ -1638,14 +1650,7 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
                 sinfo->role = ROLE_UDP_SERVER;
         }
 
-        // TBD: consolidate
-        bpf_probe_read_kernel(stuple->laddr, sizeof(stuple->laddr), sinfo->laddr);
-        bpf_probe_read_kernel(stuple->raddr, sizeof(stuple->raddr), sinfo->raddr);
-        stuple->lport = sinfo->lport;
-        stuple->rport = sinfo->rport;
-        stuple->proto = IPPROTO_UDP;
-        if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY) &&
-            !bpf_map_update_elem(&hash_tuples, stuple, &key, BPF_ANY)) {
+        if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
             if (debug_proc(sinfo->comm, NULL))
                 bpf_printk("Added new %s socket %lx for pid %u", GET_ROLE_STR(sinfo->role), key, pid);
             sq.key = key;
@@ -1904,7 +1909,7 @@ int handle_skb(struct __sk_buff *skb) {
     }
     bpf_probe_read_kernel(&key, sizeof(key), pkey);
     sinfo = bpf_map_lookup_elem(&hash_socks, &key);
-    if (!sinfo) {
+    if (!sinfo || sinfo->lport != lport || sinfo->rport != rport) {
         bpf_printk("WARNING: Failed to lookup tcp socket key %lx for lport %u and rport %u\n", key, lport, rport);
         return skb->len;
     }

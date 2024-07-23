@@ -1728,10 +1728,16 @@ static char *mkjson_prettify(const char *s, char *r) {
     int  indent = 0;
     bool array = false;
     bool quoted = false;
+    bool escaped = false;
 
     /* iterate over JSON string.*/
     for (const char *x = s; *x != '\0'; x++) {
-        if (*x == '"' && (x == s || *(x - 1) != '\\'))
+        if (*x == '\\' || escaped) {
+            escaped = !escaped;
+            *r++ = *x;
+            continue;
+        }
+        if (*x == '"')
             quoted = !quoted;
         if (quoted) {
             *r++ = *x;
