@@ -421,6 +421,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     char                json_msg[JSON_OUT_LEN_MAX] = {0};
     char                json_msg_full[JSON_OUT_LEN_MAX] = {0};
     char               *json_out;
+    int                 j_type_rx;
+    int                 j_type_tx;
     int                 len;
     int                 cntf;
     int                 cnth;
@@ -537,14 +539,18 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
             }
 
             snprintf(ts1, sizeof(ts1), "%.09f", (rs->tx_ts - rs->tx_ts_first) / 1e9);
-            json_obj[J_SOCK_TX] = mkjson(MKJ_OBJ, 11,
+            if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER)
+                j_type_tx = J_SOCK_SERVER_TX;
+            else
+                j_type_tx = J_SOCK_CLIENT_TX;
+            json_obj[j_type_tx] = mkjson(MKJ_OBJ, 11,
                 J_STRING, JKEY(I_SOCK_TX_INTERFACE), cache_interface[rs->tx_ifindex] ? cache_interface[rs->tx_ifindex] : "",
                 rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_DATA_PACKETS), rs->tx_data_packets,
                 J_UINT, JKEY(I_SOCK_TX_PACKETS), rs->tx_packets,
                 rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_PACKETS_RETRANS), rs->tx_packets_retrans,
                 rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_PACKETS_DUPS), rs->tx_packets_dups,
                 rs->proto == IPPROTO_TCP ? J_JSON : J_IGN_JSON, JKEY(I_SOCK_TX_FLAGS), tx_flags[0] ? tx_flags : "{}",
-                J_TIMESTAMP, JKEY(I_SOCK_TX_DURATION), rs->tx_ts - rs->tx_ts_first ? ts1 : "0",
+                J_TIMESTAMP, JKEY(I_SOCK_TX_DURATION), rs->tx_ts > rs->tx_ts_first ? ts1 : "0",
                 J_LLUINT, JKEY(I_SOCK_TX_BYTES), rs->tx_bytes,
                 rs->proto == IPPROTO_TCP ? J_LLUINT : J_IGN_LLUINT, JKEY(I_SOCK_TX_BYTES_ACKED), rs->tx_bytes_acked,
                 rs->proto == IPPROTO_TCP ? J_LLUINT : J_IGN_LLUINT, JKEY(I_SOCK_TX_BYTES_RETRANS), rs->tx_bytes_retrans,
@@ -579,7 +585,11 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
             snprintf(ts1, sizeof(ts1), "%.09f", (rs->rx_ts - rs->rx_ts_first) / 1e9);
             if(rs->proto == IPPROTO_TCP)
                 snprintf(ts2, sizeof(ts2), "%.09f", rs->rtt / 1e9);
-            json_obj[J_SOCK_RX] = mkjson(MKJ_OBJ, 12,
+            if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER)
+                j_type_rx = J_SOCK_SERVER_RX;
+            else
+                j_type_rx = J_SOCK_CLIENT_RX;
+            json_obj[j_type_rx] = mkjson(MKJ_OBJ, 12,
                 J_STRING, JKEY(I_SOCK_RX_INTERFACE), cache_interface[rs->rx_ifindex] ? cache_interface[rs->rx_ifindex] : "",
                 rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_RX_DATA_PACKETS), rs->rx_data_packets,
                 J_UINT, JKEY(I_SOCK_RX_PACKETS), rs->rx_packets,
@@ -588,13 +598,13 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                 rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_RX_PACKETS_REORDER), rs->rx_packets_reorder,
                 J_UINT, JKEY(I_SOCK_RX_PACKETS_FRAG), rs->rx_packets_frag,
                 rs->proto == IPPROTO_TCP ? J_JSON : J_IGN_JSON, JKEY(I_SOCK_RX_FLAGS), rx_flags[0] ? rx_flags : "{}",
-                J_TIMESTAMP, JKEY(I_SOCK_RX_DURATION), rs->rx_ts - rs->rx_ts_first ? ts1 : "0",
+                J_TIMESTAMP, JKEY(I_SOCK_RX_DURATION), rs->rx_ts > rs->rx_ts_first ? ts1 : "0",
                 J_LLUINT, JKEY(I_SOCK_RX_BYTES), rs->rx_bytes,
                 J_UINT, JKEY(I_SOCK_RX_TTL), rs->rx_ttl,
                 rs->proto == IPPROTO_TCP ? J_TIMESTAMP : J_IGN_TIMESTAMP, JKEY(I_SOCK_RTT), rs->rtt ? ts2 : "0");
         }
         snprintf(ts1, sizeof(ts1), "%.09f", (r->ts - r->ts_first) / 1e9);
-        json_obj[J_SOCK_AGE] = mkjson(MKJ_OBJ, 1, J_TIMESTAMP, JKEY(I_SOCK_AGE), r->ts - r->ts_first ? ts1 : "0");
+        json_obj[J_SOCK_AGE] = mkjson(MKJ_OBJ, 1, J_TIMESTAMP, JKEY(I_SOCK_AGE), r->ts > r->ts_first ? ts1 : "0");
 
         /* app */
         app_msg = (struct APP_MSG *)&rs->app_msg;
@@ -657,7 +667,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                     }
                     snprintf(ts1, sizeof(ts1), "%.09f", (app_msg->ts[idx] - r->ts_first) / 1e9);
                     msg = mkjson(MKJ_OBJ, 7,
-                        J_TIMESTAMP, "_Timestamp", app_msg->ts[idx] - r->ts_first ? ts1 : "0",
+                        J_TIMESTAMP, "_Timestamp", app_msg->ts[idx] > r->ts_first ? ts1 : "0",
                         J_UINT, "TransactionId", dns.transaction_id,
                         !dns.flags.qr ? J_STRING : J_IGN_STRING, "OpCode", dns.flags.opcode < DNS_OPCODE_MAX ?
                             dns_opcode_table[dns.flags.opcode] : "-",
@@ -669,11 +679,11 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                 } else if (app_msg->type == APP_DNS) {
                     msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "DNS Message Decoder");
                 }
-                else if (app_msg->type == APP_HTTP && !plugin_http_decode(app_msg->data[idx], app_msg->len[idx], &http)) {
+                else if (app_msg->type == APP_HTTP && !plugin_http_decode(app_msg->data[idx], MIN(app_msg->len[idx], APP_MSG_LEN_MAX), &http)) {
                     int msg_size = APP_MSG_LEN_MAX / app_msg->cnt;
                     snprintf(ts1, sizeof(ts1), "%.09f", (app_msg->ts[idx] - r->ts_first) / 1e9);
                     char *msg_http = mkjson(MKJ_OBJ, 6,
-                        J_TIMESTAMP, "_Timestamp", app_msg->ts[idx] - r->ts_first ? ts1 : "0",
+                        J_TIMESTAMP, "_Timestamp", app_msg->ts[idx] > r->ts_first ? ts1 : "0",
                         strlen(http.method) ? J_STRING : J_IGN_STRING, "_Method", http.method,
                         strlen(http.url) ? J_STRING : J_IGN_STRING, "_Url", http.url,
                         strlen(http.version) ? J_STRING : J_IGN_STRING, "_Version", http.version,
@@ -703,7 +713,10 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                     else
                         fprintf(stderr, "Invalid http message with len %u and index %u out of %u discarded: %s\n", len, idx, app_msg->cnt, msg_http);
                 } else if (app_msg->type == APP_HTTP) {
-                    msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Decoder");
+                    if(idx)
+                        msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Body", http.body);
+                    else
+                        msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Decoder");
                 }
 
                 if(msg) {
@@ -752,17 +765,33 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
             /* app, app tx and app rx */
             if(app_msg->type == APP_DNS) {
                 json_obj[J_APP] = mkjson(MKJ_OBJ, 1, J_STRING, JKEY(I_APP), "DNS");
+                if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER) {
+                    j_type_tx = J_APP_SERVER_TX_DNS;
+                    j_type_rx = J_APP_SERVER_RX_DNS;
+                }
+                else {
+                    j_type_tx = J_APP_CLIENT_TX_DNS;
+                    j_type_rx = J_APP_CLIENT_RX_DNS;
+                }
                 if(app_tx_msg_cnt)
-                    json_obj[J_APP_TX_DNS] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_TX_DNS), app_tx_msg_list);
+                    json_obj[j_type_tx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_TX_DNS), app_tx_msg_list);
                 if(app_rx_msg_cnt)
-                    json_obj[J_APP_RX_DNS] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_RX_DNS), app_rx_msg_list);
+                    json_obj[j_type_rx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_RX_DNS), app_rx_msg_list);
             }
             else {
                 json_obj[J_APP] = mkjson(MKJ_OBJ, 1, J_STRING, JKEY(I_APP), "HTTP");
+                if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER) {
+                    j_type_tx = J_APP_SERVER_TX_HTTP;
+                    j_type_rx = J_APP_SERVER_RX_HTTP;
+                }
+                else {
+                    j_type_tx = J_APP_CLIENT_TX_HTTP;
+                    j_type_rx = J_APP_CLIENT_RX_HTTP;
+                }
                 if(app_tx_msg_cnt)
-                    json_obj[J_APP_TX_HTTP] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_TX_HTTP), app_tx_msg_list);
+                    json_obj[j_type_tx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_TX_HTTP), app_tx_msg_list);
                 if(app_rx_msg_cnt)
-                    json_obj[J_APP_RX_HTTP] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_RX_HTTP), app_rx_msg_list);
+                    json_obj[j_type_rx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_RX_HTTP), app_rx_msg_list);
             }
         }
         else if (app_msg->cnt) {
@@ -962,7 +991,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         J_STRING, JKEY(I_FILE_MODE), S_ISLNK(rf->imode) ? "symlink" : (rf->inlink > 1 ? "hardlink" : "regular"),
         J_UINT, JKEY(I_FILE_EVENT_COUNT), rf->events,
         J_JSON, JKEY(I_FILE_EVENTS), file_events,
-        J_TIMESTAMP, JKEY(I_FILE_EVENTS_DURATION), r->ts - r->ts_first ? ts1 : "0",
+        J_TIMESTAMP, JKEY(I_FILE_EVENTS_DURATION), r->ts > r->ts_first ? ts1 : "0",
         J_UINT, JKEY(I_FILE_INODE), rf->ino ? rf->ino : 0,
         J_UINT, JKEY(I_FILE_INODE_LINK_COUNT), rf->ino ? rf->inlink : 0,
         J_STRING, JKEY(I_FILE_DEVICE), rf->ino && cache_device[rf->idev] ? cache_device[rf->idev] : "",

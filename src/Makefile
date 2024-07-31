@@ -121,7 +121,8 @@ echo "- Enable kflowd systemd service to start automatically after reboot
     sudo systemctl enable kflowd\n"
 echo "- Start kflowd systemd service and check status with the following commands:
     sudo systemctl start kflowd
-    sudo systemctl status kflowd\n"
+    sudo systemctl status kflowd
+    sudo journalctl -fe -u kflowd\n"
 endef
 export NFPM
 export NFPM_PRE

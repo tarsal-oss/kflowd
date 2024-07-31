@@ -443,6 +443,7 @@ struct APP_MSG {
     uint8_t  type;
     uint8_t  cnt;
     uint64_t ts[APP_MSG_MAX];
+    uint32_t seq[APP_MSG_MAX];
     uint16_t len[APP_MSG_MAX];
     uint8_t  isrx[APP_MSG_MAX];
     char     data[APP_MSG_MAX][APP_MSG_LEN_MAX];
@@ -660,7 +661,7 @@ typedef int plugin_vuln_func(struct bpf_map *, int *, char *, int, char *);
 typedef int plugin_device_func(char **, char **);
 typedef int plugin_interface_func(char **);
 typedef int plugin_user_group_func(int, char **);
-#define PLUGIN_PATH           "../lib/"
+#define PLUGIN_PATH         "../lib/"
 
 /* define output types */
 #define JSON_SUB_KEY_MAX    16
@@ -813,16 +814,22 @@ enum JSON_OBJ {
     J_INFO,
     J_PROC,
     J_SOCK,
-    J_SOCK_TX,
-    J_SOCK_RX,
+    J_SOCK_CLIENT_TX,
+    J_SOCK_CLIENT_RX,
+    J_SOCK_SERVER_RX,
+    J_SOCK_SERVER_TX,
     J_SOCK_AGE,
     J_FILE,
     J_FILE_CHECKSUM,
     J_APP,
-    J_APP_TX_DNS,
-    J_APP_RX_DNS,
-    J_APP_TX_HTTP,
-    J_APP_RX_HTTP,
+    J_APP_CLIENT_TX_DNS,
+    J_APP_CLIENT_RX_DNS,
+    J_APP_CLIENT_TX_HTTP,
+    J_APP_CLIENT_RX_HTTP,
+    J_APP_SERVER_RX_DNS,
+    J_APP_SERVER_TX_DNS,
+    J_APP_SERVER_RX_HTTP,
+    J_APP_SERVER_TX_HTTP,
     JSON_OBJ_MAX
 };
 
