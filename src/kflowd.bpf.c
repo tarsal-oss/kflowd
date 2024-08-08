@@ -856,6 +856,14 @@ static __always_inline int handle_tcp_event(void *ctx, const struct SOCK_EVENT_I
             }
             /* prepare new tcp server socket with unknown pid by remembering socket */
             sinfo->sock = sock;
+            sinfo->pid = 0;
+            sinfo->tid = 0;
+            sinfo->ppid = 0;
+            sinfo->uid = 0;
+            sinfo->gid = 0;
+            sinfo->proc[0] = 0;
+            sinfo->comm[0] = 0;
+            sinfo->comm_parent[0] = 0;
             sinfo->family = family;
             sinfo->proto = IPPROTO_TCP;
             sinfo->role = ROLE_TCP_SERVER;
@@ -1909,6 +1917,8 @@ int handle_skb(struct __sk_buff *skb) {
         }
     }
     if (!sinfo) {
+        if(!isrx)
+            return skb->len;
         /* prepare socket for alternate key when tcp server handshake not yet finished */
         sinfo = bpf_map_lookup_elem(&heap_sock, &zero);
         if (!sinfo) {
@@ -1916,7 +1926,13 @@ int handle_skb(struct __sk_buff *skb) {
             return 0;
         }
         sinfo->pid = 0;
+        sinfo->tid = 0;
+        sinfo->ppid = 0;
+        sinfo->uid = 0;
+        sinfo->gid = 0;
+        sinfo->proc[0] = 0;
         sinfo->comm[0] = 0;
+        sinfo->comm_parent[0] = 0;
         sinfo->family = family;
         sinfo->role = ROLE_TCP_SERVER;
         sinfo->proto = IPPROTO_TCP;
@@ -1924,7 +1940,10 @@ int handle_skb(struct __sk_buff *skb) {
         bpf_probe_read_kernel(sinfo->raddr, sizeof(stuple->raddr), raddr);
         stuple->lport = lport;
         stuple->rport = rport;
-        sinfo->ts_first = bpf_ktime_get_ns();
+        sinfo->rx_ts = bpf_ktime_get_ns();
+        sinfo->rx_ts_first = sinfo->rx_ts;
+        sinfo->ts_first = sinfo->rx_ts;
+        sinfo->tx_ts_first = sinfo->tx_ts = 0;
         sinfo->app_msg.cnt = 0;
         key = crc64(0, (const u8 *)stuple, sizeof(*stuple));
     }
@@ -1947,10 +1966,12 @@ int handle_skb(struct __sk_buff *skb) {
     sinfo->app_msg.len[num] = data_len;
     sinfo->app_msg.isrx[num] = isrx;
     sinfo->app_msg.cnt++;
-    if (data_len > APP_MSG_LEN_MAX)
-        data_len = APP_MSG_LEN_MAX;
-    if (data_len >= APP_MSG_LEN_MIN)
+    if (data_len >= APP_MSG_LEN_MAX)
+        data_len = APP_MSG_LEN_MAX - 1;
+    if (data_len >= APP_MSG_LEN_MIN) {
         bpf_skb_load_bytes(skb, data_ofs, sinfo->app_msg.data[num], data_len);
+        sinfo->app_msg.data[num][data_len] = 0;
+    }
     else
         return skb->len;
     if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {

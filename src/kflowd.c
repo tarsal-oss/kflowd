@@ -692,7 +692,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                     len = strlen(msg_http);
                     if(len && len < msg_size && msg_http[len - 1] == '}') {
                         msg_http[len - 1] = 0; /* remove closed brace */
-                        msg = calloc(msg_size, sizeof(char));
+                        msg = calloc(msg_size + HTTP_BODY_LEN_MAX + 32, sizeof(char));
                         snprintf(msg, msg_size, "%s", msg_http);
                         free(msg_http);
                         for (cnth = 0; cnth < HTTP_HEADERS_MAX; cnth++) {
@@ -704,11 +704,10 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                         }
                         if(strlen(http.body)) {
                             len = strlen(msg);
-                            if(msg_size - len - 1 > (int)strlen(http.body) + 32)
-                                snprintf(msg + len , msg_size - len, ", \"_Body\": \"%s\"", http.body);
+                            snprintf(msg + len , msg_size - len + HTTP_BODY_LEN_MAX + 32, ", \"_Body\": \"%s\"", http.body);
                         }
                         len = strlen(msg);
-                        snprintf(msg + len, msg_size - len, "}");
+                        snprintf(msg + len, msg_size - len + HTTP_BODY_LEN_MAX + 32, "}");
                     }
                     else
                         fprintf(stderr, "Invalid http message with len %u and index %u out of %u discarded: %s\n", len, idx, app_msg->cnt, msg_http);
