@@ -48,40 +48,42 @@ static char usage_str[] =
     "  kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|json-min|table] [-v] [-c]\n"
     "         [-p dns=PROTO/PORT,...] [-p http=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V]\n"
     "         [-T TOKEN] [-P PATH] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]\n"
-    "  -m file,socket          Monitor only specified kernel subsystem (filesystem or sockets)\n"
-    "                            (default: all, option omitted!)\n"
-    "  -t IDLE,ACTIVE          Timeout in seconds for idle or active network sockets until export\n"
-    "                            (default: idle '15' seconds, active '1800' seconds)\n"
-    "  -e EVENTS               Max number of filesystem events per aggregated record until export\n"
-    "                            (default: disabled, '1': no aggregation)\n"
-    "  -o json                 Json output with formatting (default)\n"
-    "     json-min             Json output with minimal formatting \n"
-    "     table                Tabular output with limited keys and no UDP output\n"
-    "  -v                      Version of executable files identified by installed package\n"
-    "                            (supported only for rpm- and deb-based package management)\n"
-    "  -c                      Checksum hashes of MD5 and SHA256 calculated for executables\n"
-    "  -p dns=PROTO/PORT,...   Port(s) examined for decoding of DNS application protocol\n"
-    "                            (default: 'dns=udp/53,tcp/53', disabled: 'dns=off')\n"
-    "  -p http=PROTO/PORT,...  Port(s) examined for decoding of HTTP application protocol\n"
-    "                            (default: 'http=tcp/80', disabled: 'http=off')\n"
-    "  -u IP:PORT,...          UDP server(s) IPv4 or IPv6 address to send json output to.\n"
-    "                          Output also printed to stdout console unless quiet option -q or\n"
-    "                            daemon mode -d specified\n"
-    "  -q                      Quiet mode to suppress output to stdout console\n"
-    "  -d                      Daemonize program to run in background\n"
-    "  -V                      Verbose output\n"
-    "                            Print eBPF load and co-re messages on start of eBPF program\n"
-    "                            to stderr console\n"
-    "  -T TOKEN                Token specified on host to be included in json output\n"
-    "  -P PATH                 Path to search for kflowd plugin modules (default: '../lib/')\n"
-    "  -l, --legend            Show legend\n"
-    "  -h, --help              Show help\n"
-    "      --version           Show version\n"
-    "  -D PROCESS              Debug\n"
-    "                            Print ebpf kernel log messages of process or expiration queue to\n"
-    "                            kernel trace pipe (any process: '*', with quotes!, queue: 'q')\n"
-    "                            Use command:\n"
-    "                              'sudo cat /sys/kernel/debug/tracing/trace_pipe'\n\n"
+    "  -m file,socket           Monitor only specified kernel subsystem (filesystem or sockets)\n"
+    "                             (default: all, option omitted!)\n"
+    "  -t IDLE,ACTIVE           Timeout in seconds for idle or active network sockets until export\n"
+    "                             (default: idle '15' seconds, active '1800' seconds)\n"
+    "  -e EVENTS                Max number of filesystem events per aggregated record until export\n"
+    "                             (default: disabled, '1': no aggregation)\n"
+    "  -o json                  Json output with formatting (default)\n"
+    "     json-min              Json output with minimal formatting \n"
+    "     table                 Tabular output with limited keys and no UDP output\n"
+    "  -v                       Version of executable files identified by installed package\n"
+    "                             (supported only for rpm- and deb-based package management)\n"
+    "  -c                       Checksum hashes of MD5 and SHA256 calculated for executables\n"
+    "  -p dns=PROTO/PORT,...    Port(s) examined for decoding of DNS application protocol\n"
+    "                             (default: 'dns=udp/53,tcp/53', disabled: 'dns=off')\n"
+    "  -p http=PROTO/PORT,...   Port(s) examined for decoding of HTTP application protocol\n"
+    "                             (default: 'http=tcp/80', disabled: 'http=off')\n"
+    "  -p syslog=PROTO/PORT,... Port(s) examined for decoding of SYSLOG application protocol\n"
+    "                             (default: 'syslog=udp/514,tcp/514', disabled: 'syslog=off')\n"
+    "  -u IP:PORT,...           UDP server(s) IPv4 or IPv6 address to send json output to.\n"
+    "                           Output also printed to stdout console unless quiet option -q or\n"
+    "                             daemon mode -d specified\n"
+    "  -q                       Quiet mode to suppress output to stdout console\n"
+    "  -d                       Daemonize program to run in background\n"
+    "  -V                       Verbose output\n"
+    "                             Print eBPF load and co-re messages on start of eBPF program\n"
+    "                             to stderr console\n"
+    "  -T TOKEN                 Token specified on host to be included in json output\n"
+    "  -P PATH                  Path to search for kflowd plugin modules (default: '../lib/')\n"
+    "  -l, --legend             Show legend\n"
+    "  -h, --help               Show help\n"
+    "      --version            Show version\n"
+    "  -D PROCESS               Debug\n"
+    "                             Print ebpf kernel log messages of process or expiration queue to\n"
+    "                             kernel trace pipe (any process: '*', with quotes!, queue: 'q')\n"
+    "                             Use command:\n"
+    "                               'sudo cat /sys/kernel/debug/tracing/trace_pipe'\n\n"
     "Examples:\n"
     "  sudo ./kflowd                                                           # terminal mode\n"
     "  sudo ./kflowd -m file,socket -v -c -u 1.2.3.4:2056,127.0.0.1:2057 -d    # daemon mode\n"
@@ -243,7 +245,9 @@ static struct JSON_KEY jkey[] = {
     {I_APP_TX_DNS, {"AppTxDns"}, "Messages transmitted by DNS application layer"},
     {I_APP_RX_DNS, {"AppRxDns"}, "Messages received by DNS application layer"},
     {I_APP_TX_HTTP, {"AppTxHttp"}, "Messages transmitted by HTTP application layer"},
-    {I_APP_RX_HTTP, {"AppRxHttp"}, "Messages received by HTTP application layer"}};
+    {I_APP_RX_HTTP, {"AppRxHttp"}, "Messages received by HTTP application layer"},
+    {I_APP_TX_HTTP, {"AppTxSyslog"}, "Messages transmitted by SYSLOG application layer"},
+    {I_APP_RX_HTTP, {"AppRxSyslog"}, "Messages received by SYSLOG application layer"}};
 
 static struct JSON_SUB_KEY jsubkeys[] = {
     {I_FILE_EVENTS,
@@ -298,7 +302,9 @@ static struct JSON_SUB_KEY jsubkeys[] = {
       {"_Status", "HTTP response status code"},
       {"_Reason", "HTTP response reason phrase"},
       {"[Header]", "HTTP standard and non-standard headers"},
-      {"_Body", "HTTP message body"}}}};
+      {"_Body", "HTTP message body"}}},
+    {I_APP_TX_SYSLOG, {{"_TBD1", ""}, {"_TBD2", ""}}},
+    {I_APP_RX_SYSLOG, {{"_TBD1", ""}, {"_TBD1", ""}}}};
 
 static struct FS_PERM fsperm[] = {
     {I_USER_READ, USER_READ, 'r'},   {I_USER_WRITE, USER_WRITE, 'w'},   {I_USER_EXE, USER_EXE, 'x'},
@@ -609,7 +615,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         /* app */
         app_msg = (struct APP_MSG *)&rs->app_msg;
         if (app_msg->cnt && ((app_msg->type == APP_DNS && plugin_dns_decode) ||
-                             (app_msg->type == APP_HTTP && plugin_http_decode))) {
+                             (app_msg->type == APP_HTTP && plugin_http_decode) ||
+                             (app_msg->type == APP_SYSLOG /* && plugin_syslog_decode */))) {
             char                *app_tx_msg[APP_MSG_MAX] = {0};
             char                *app_rx_msg[APP_MSG_MAX] = {0};
             int                  app_tx_msg_cnt = 0;
@@ -716,6 +723,9 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                         msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Body", http.body);
                     else
                         msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Decoder");
+                } else if (app_msg->type == APP_SYSLOG) {
+                    // TBD: decode in new module
+                    msg = mkjson(MKJ_OBJ, 1, J_STRING, "Message", app_msg->data[idx]);
                 }
 
                 if(msg) {
@@ -726,7 +736,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                 }
                 else
                     fprintf(stderr, "Ignored %s application message with index %u out of %u\n", app_msg->type == APP_HTTP ?
-                        "http" : (app_msg->type == APP_DNS ? "dns" : "unknown"), idx, app_msg->cnt);
+                        "http" : app_msg->type == APP_DNS ? "dns" : app_msg->type == APP_SYSLOG ? "syslog"  : "unknown", idx, app_msg->cnt);
             }
 
             /* tx and rx message list */
@@ -777,7 +787,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                 if(app_rx_msg_cnt)
                     json_obj[j_type_rx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_RX_DNS), app_rx_msg_list);
             }
-            else {
+            else if(app_msg->type == APP_HTTP) {
                 json_obj[J_APP] = mkjson(MKJ_OBJ, 1, J_STRING, JKEY(I_APP), "HTTP");
                 if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER) {
                     j_type_tx = J_APP_SERVER_TX_HTTP;
@@ -792,12 +802,29 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                 if(app_rx_msg_cnt)
                     json_obj[j_type_rx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_RX_HTTP), app_rx_msg_list);
             }
+            else {
+                json_obj[J_APP] = mkjson(MKJ_OBJ, 1, J_STRING, JKEY(I_APP), "SYSLOG");
+                if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER) {
+                    j_type_tx = J_APP_SERVER_TX_SYSLOG;
+                    j_type_rx = J_APP_SERVER_RX_SYSLOG;
+                }
+                else {
+                    j_type_tx = J_APP_CLIENT_TX_SYSLOG;
+                    j_type_rx = J_APP_CLIENT_RX_SYSLOG;
+                }
+                if(app_tx_msg_cnt)
+                    json_obj[j_type_tx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_TX_SYSLOG), app_tx_msg_list);
+                if(app_rx_msg_cnt)
+                    json_obj[j_type_rx] = mkjson(MKJ_OBJ, 1, J_JSON, JKEY(I_APP_RX_SYSLOG), app_rx_msg_list);
+            }
         }
         else if (app_msg->cnt) {
             if(app_msg->type == APP_DNS)
                 json_obj[J_APP] = mkjson(MKJ_OBJ, 1, J_STRING, JKEY(I_APP), "DNS");
-            else
+            else if(app_msg->type == APP_HTTP)
                 json_obj[J_APP] = mkjson(MKJ_OBJ, 1, J_STRING, JKEY(I_APP), "HTTP");
+            else
+                json_obj[J_APP] = mkjson(MKJ_OBJ, 1, J_STRING, JKEY(I_APP), "SYSLOG");
         }
 
         /* merge json objects */
@@ -1085,6 +1112,7 @@ int main(int argc, char **argv) {
     int                 exes = 0;
     bool                dns_port_set = false;
     bool                http_port_set = false;
+    bool                syslog_port_set = false;
     short               port_num;
     int                 cnta;
     int                 cntp;
@@ -1101,6 +1129,10 @@ int main(int argc, char **argv) {
     config.app_proto[APP_HTTP][0] = IPPROTO_TCP;
     config.app_port[APP_HTTP][0] = HTTP_PORT;
     config.app_port_num[APP_HTTP] = 1;
+    config.app_proto[APP_SYSLOG][0] = IPPROTO_UDP;
+    config.app_proto[APP_SYSLOG][1] = IPPROTO_TCP;
+    config.app_port[APP_SYSLOG][0] = config.app_port[APP_SYSLOG][1] = SYSLOG_PORT;
+    config.app_port_num[APP_SYSLOG] = 2;
     snprintf(config.plugin_path, sizeof(config.plugin_path), "%s", PLUGIN_PATH);
 
     /* get system info and parse command line options */
@@ -1177,8 +1209,10 @@ int main(int argc, char **argv) {
         case 'p':
             if (!strncmp(optarg, "dns=off", 8))
                 config.app_port_num[APP_DNS] = 0;
-            else if (!strncmp(optarg, "http=off", 8))
+            else if (!strncmp(optarg, "http=off", 9))
                 config.app_port_num[APP_HTTP] = 0;
+            else if (!strncmp(optarg, "syslog=off", 11))
+                config.app_port_num[APP_SYSLOG] = 0;
             else {
                 token = strtok(optarg, "=");
                 TOLOWER_STR(token);
@@ -1235,8 +1269,34 @@ int main(int argc, char **argv) {
                     }
                     if (!config.app_port_num[APP_HTTP])
                         usage("No HTTP port specified");
+                } else if (!strncmp(token, "syslog", 7)) {
+                    if (syslog_port_set)
+                        usage("SYSLOG port(s) specified repeatedly");
+                    syslog_port_set = true;
+                    config.app_port_num[APP_SYSLOG] = 0;
+                    while ((token = strtok(NULL, ",")) != NULL) {
+                        port_num = config.app_port_num[APP_SYSLOG];
+                        TOLOWER_STR(token);
+                        if ((int)strlen(token) < 5 || (strncmp(token, "tcp/", 4) && strncmp(token, "udp/", 4)))
+                            usage("Invalid transport protocol for SYSLOG port(s) specified");
+                        for (cnt = 4; cnt < (int)strlen(token); cnt++)
+                            if (!isdigit(token[cnt]))
+                                invalid = true;
+                        if (invalid || strlen(token) > 9)
+                            usage("Invalid SYSLOG port(s) specified");
+                        config.app_proto[APP_SYSLOG][port_num] = (!strncmp(token, "tcp/", 4) ? IPPROTO_TCP : IPPROTO_UDP);
+                        config.app_port[APP_SYSLOG][port_num] = atoi(&token[4]);
+                        for (cnt = 0; cnt < port_num; cnt++)
+                            if (config.app_proto[APP_SYSLOG][cnt] == config.app_proto[APP_SYSLOG][port_num] &&
+                                config.app_port[APP_SYSLOG][cnt] == config.app_port[APP_SYSLOG][port_num])
+                                usage("Duplicate SYSLOG ports specified");
+                        if (++config.app_port_num[APP_SYSLOG] > APP_PORT_MAX)
+                            usage("Too many SYSLOG ports specified");
+                    }
+                    if (!config.app_port_num[APP_SYSLOG])
+                        usage("No SYSLOG port specified");
                 } else
-                    usage("Invalid format for DNS or HTTP port(s) specified");
+                    usage("Invalid format for DNS, HTTP or SYSLOG port(s) specified");
             }
             argn += 2;
             break;
@@ -1534,19 +1594,26 @@ int main(int argc, char **argv) {
         fprintf(stderr, "\e[0;32m[+]\e[0m   Idle timeout:   %5u seconds\n", config.agg_idle_timeout);
         fprintf(stderr, "\e[0;32m[+]\e[0m   Active timeout: %5u seconds\n", config.agg_active_timeout);
     }
-    if (config.app_port_num[APP_DNS] || config.app_port_num[APP_HTTP]) {
+    if (config.app_port_num[APP_DNS] || config.app_port_num[APP_HTTP] || config.app_port_num[APP_SYSLOG]) {
         fprintf(stderr, "\e[0;32m[+]\e[0m Application monitoring for up to %u messages per record\n", APP_MSG_MAX);
         if (config.app_port_num[APP_DNS]) {
-            fprintf(stderr, "\e[0;32m[+]  \e[0m DNS:  ");
+            fprintf(stderr, "\e[0;32m[+]  \e[0m DNS:     ");
             for (cnt = 0; cnt < config.app_port_num[APP_DNS]; cnt++)
-                fprintf(stderr, "%s%s%u", cnt ? ", " : " ",
+                fprintf(stderr, "%s%s%u", cnt ? ", " : "",
                         config.app_proto[APP_DNS][cnt] == IPPROTO_TCP ? "tcp/" : "udp/", config.app_port[APP_DNS][cnt]);
             fprintf(stderr, "\n");
         }
         if (config.app_port_num[APP_HTTP]) {
-            fprintf(stderr, "\e[0;32m[+]  \e[0m HTTP:  ");
+            fprintf(stderr, "\e[0;32m[+]  \e[0m HTTP:    ");
             for (cnt = 0; cnt < config.app_port_num[APP_HTTP]; cnt++)
                 fprintf(stderr, "%stcp/%u", cnt ? ", " : "", config.app_port[APP_HTTP][cnt]);
+            fprintf(stderr, "\n");
+        }
+        if (config.app_port_num[APP_SYSLOG]) {
+            fprintf(stderr, "\e[0;32m[+]  \e[0m SYSLOG:  ");
+            for (cnt = 0; cnt < config.app_port_num[APP_SYSLOG]; cnt++)
+                fprintf(stderr, "%s%s%u", cnt ? ", " : "",
+                        config.app_proto[APP_SYSLOG][cnt] == IPPROTO_TCP ? "tcp/" : "udp/", config.app_port[APP_SYSLOG][cnt]);
             fprintf(stderr, "\n");
         }
     }

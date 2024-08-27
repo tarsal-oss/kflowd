@@ -260,14 +260,16 @@ struct SOCK_EVENT {
 #define DNS_RDATA_MAX             8
 #define DNS_RDATA_DEC_LEN_MAX     512
 #define DNS_QTYPE_MAX             (int)(sizeof(dns_qtypes) / sizeof(struct DNS_QTYPE))
+#define SYSLOG_PORT               514
 
 /* define application constants */
-enum APP_TYPE { APP_DNS, APP_HTTP, APP_MAX };
-#define GET_APP_NAME(type) (type == APP_DNS ? "DNS" : type == APP_HTTP ? "HTTP" : "unknown")
-#define APP_MSG_MAX        4
-#define APP_MSG_LEN_MIN    MIN(DNS_MSG_LEN_MIN, HTTP_MSG_LEN_MIN)
-#define APP_MSG_LEN_MAX    1400
-#define APP_PORT_MAX       8
+enum APP_TYPE { APP_DNS, APP_HTTP, APP_SYSLOG, APP_MAX };
+#define GET_APP_NAME(type)                                                                                             \
+    (type == APP_DNS ? "DNS" : type == APP_HTTP ? "HTTP" : type == APP_SYSLOG ? "SYSLOG" : "unknown")
+#define APP_MSG_MAX     4
+#define APP_MSG_LEN_MIN MIN(DNS_MSG_LEN_MIN, HTTP_MSG_LEN_MIN)
+#define APP_MSG_LEN_MAX 1400
+#define APP_PORT_MAX    8
 
 /* define macros for startup requirement checks */
 #define CHECK_MAX         3
@@ -661,7 +663,7 @@ typedef int plugin_vuln_func(struct bpf_map *, int *, char *, int, char *);
 typedef int plugin_device_func(char **, char **);
 typedef int plugin_interface_func(char **);
 typedef int plugin_user_group_func(int, char **);
-#define PLUGIN_PATH         "../lib/"
+#define PLUGIN_PATH "../lib/"
 
 /* define output types */
 #define JSON_SUB_KEY_MAX    16
@@ -771,7 +773,9 @@ enum INDEX_JSON_KEY {
     I_APP_TX_DNS,
     I_APP_RX_DNS,
     I_APP_TX_HTTP,
-    I_APP_RX_HTTP
+    I_APP_RX_HTTP,
+    I_APP_TX_SYSLOG,
+    I_APP_RX_SYSLOG
 };
 
 /* JSON macro to get key */
@@ -826,10 +830,14 @@ enum JSON_OBJ {
     J_APP_CLIENT_RX_DNS,
     J_APP_CLIENT_TX_HTTP,
     J_APP_CLIENT_RX_HTTP,
+    J_APP_CLIENT_TX_SYSLOG,
+    J_APP_CLIENT_RX_SYSLOG,
     J_APP_SERVER_RX_DNS,
     J_APP_SERVER_TX_DNS,
     J_APP_SERVER_RX_HTTP,
     J_APP_SERVER_TX_HTTP,
+    J_APP_SERVER_TX_SYSLOG,
+    J_APP_SERVER_RX_SYSLOG,
     JSON_OBJ_MAX
 };
 
