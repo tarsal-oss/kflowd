@@ -1383,6 +1383,7 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
     __u16                   lport;
     __u16                   rport;
     __u8                   *dnshdr = NULL;
+    __u8                   *sysloghdr = NULL;
     bool                    is_app_port[APP_MAX] = {0};
     __u64                   key;
     __u64                   ts_now;
@@ -1453,7 +1454,7 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
         }
     }
 
-    /* check for dns port */
+    /* check for dns and syslog udp ports */
     for (cnt = 0; cnt < APP_PORT_MAX; cnt++) {
         // verifier issue
         // if (!dns_proto[cnt])
@@ -1462,6 +1463,11 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
             (lport == app_port[APP_DNS][cnt] || rport == app_port[APP_DNS][cnt])) {
             is_app_port[APP_DNS] = true;
             dnshdr = BPF_CORE_READ(skb, head) + BPF_CORE_READ(skb, transport_header) + sizeof(*udphdr);
+            break;
+        } else if (IPPROTO_UDP == app_proto[APP_SYSLOG][cnt] &&
+                   (lport == app_port[APP_SYSLOG][cnt] || rport == app_port[APP_SYSLOG][cnt])) {
+            is_app_port[APP_SYSLOG] = true;
+            sysloghdr = BPF_CORE_READ(skb, head) + BPF_CORE_READ(skb, transport_header) + sizeof(*udphdr);
             break;
         }
     }
@@ -1524,6 +1530,7 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
                 bpf_probe_read_kernel(sinfo->app_msg.data[num], MIN((__u16)data_len, sizeof(sinfo->app_msg.data[num])),
                                       dnshdr);
                 /* export record on max application messages */
+                // tbd: do we need submission?
                 if (sinfo->app_msg.cnt >= APP_MSG_MAX) {
                     submit_sock_record(sinfo);
                     if (bpf_map_delete_elem(&hash_socks, &key))
@@ -1536,6 +1543,29 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
                 }
             } else
                 bpf_printk("WARNING: Failed to capture dns application message #%u\n", sinfo->app_msg.cnt);
+        } else if (is_app_port[APP_SYSLOG]) {
+            if (sinfo->app_msg.cnt < APP_MSG_MAX) {
+                num = sinfo->app_msg.cnt++;
+                sinfo->app_msg.type = APP_SYSLOG;
+                sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
+                sinfo->app_msg.len[num] = data_len;
+                sinfo->app_msg.isrx[num] = isrx;
+                bpf_probe_read_kernel(sinfo->app_msg.data[num], MIN((__u16)data_len, sizeof(sinfo->app_msg.data[num])),
+                                      sysloghdr);
+                /* export record on max application messages */
+                // tbd: do we need submission?
+                if (sinfo->app_msg.cnt >= APP_MSG_MAX) {
+                    submit_sock_record(sinfo);
+                    if (bpf_map_delete_elem(&hash_socks, &key))
+                        bpf_printk("WARNING: Failed to delete %s socket for key %lx and pid %u\n",
+                                   GET_ROLE_STR(sinfo->role), key, sinfo->pid);
+                    else if (debug_proc(sinfo->comm, NULL))
+                        bpf_printk("Submitted and deleted %s socket due to app message limit for key %lx and pid %u\n",
+                                   GET_ROLE_STR(sinfo->role), key, sinfo->pid);
+                    return 0;
+                }
+            } else
+                bpf_printk("WARNING: Failed to capture syslog application message #%u\n", sinfo->app_msg.cnt);
         }
         if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
             if (debug_proc(sinfo->comm, NULL))
@@ -1644,6 +1674,17 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
                                       dnshdr);
             } else
                 bpf_printk("WARNING: Failed to capture dns application message #%u\n", sinfo->app_msg.cnt);
+        } else if (is_app_port[APP_SYSLOG]) {
+            if (sinfo->app_msg.cnt < APP_MSG_MAX) {
+                num = sinfo->app_msg.cnt++;
+                sinfo->app_msg.type = APP_SYSLOG;
+                sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
+                sinfo->app_msg.len[num] = data_len;
+                sinfo->app_msg.isrx[num] = isrx;
+                bpf_probe_read_kernel(sinfo->app_msg.data[num], MIN((__u16)data_len, sizeof(sinfo->app_msg.data[num])),
+                                      sysloghdr);
+            } else
+                bpf_printk("WARNING: Failed to capture syslog application message #%u\n", sinfo->app_msg.cnt);
         }
 
         /* get role */
@@ -1685,6 +1726,8 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
     if (is_app_port[APP_DNS])
         bpf_printk("  DNS MESSAGE: %u  TRANSACTION ID: %u  LEN: %u", num, bpf_ntohs(*(__u16 *)sinfo->app_msg.data[num]),
                    sinfo->app_msg.len[num]);
+    else if (is_app_port[APP_SYSLOG])
+        bpf_printk("  SYSLOG MESSAGE: %s  LEN: %u", sinfo->app_msg.data[num], sinfo->app_msg.len[num]);
     bpf_printk("  TOTAL: TX %lu   RX %lu\n", sinfo->tx_bytes, sinfo->rx_bytes);
 
     return 0;
@@ -1917,7 +1960,7 @@ int handle_skb(struct __sk_buff *skb) {
         }
     }
     if (!sinfo) {
-        if(!isrx)
+        if (!isrx)
             return skb->len;
         /* prepare socket for alternate key when tcp server handshake not yet finished */
         sinfo = bpf_map_lookup_elem(&heap_sock, &zero);
@@ -1971,8 +2014,7 @@ int handle_skb(struct __sk_buff *skb) {
     if (data_len >= APP_MSG_LEN_MIN) {
         bpf_skb_load_bytes(skb, data_ofs, sinfo->app_msg.data[num], data_len);
         sinfo->app_msg.data[num][data_len] = 0;
-    }
-    else
+    } else
         return skb->len;
     if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
         if (debug_proc(sinfo->comm, NULL))
