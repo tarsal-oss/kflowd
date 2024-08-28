@@ -440,6 +440,32 @@ struct APP_MSG_HTTP {
     char     body[HTTP_BODY_LEN_MAX];
 };
 
+
+
+#define SYSLOG_FACILITY_LEN_MAX 32
+#define SYSLOG_SEVERITY_LEN_MAX 16
+#define SYSLOG_HEADER_SHORT_LEN_MAX 48
+#define SYSLOG_HEADER_LEN_MAX 255
+char syslog_facility_table[][SYSLOG_FACILITY_LEN_MAX] = {"kernel", "user", "mail system",  "system daemon",
+                                                         "security/authorization", "internal", "line printer", "network news",
+                                                         "uucp", "clock daemon", "security/authorization", "ftp daemon", "ntp",
+                                                         "log audit", "log alert", "clock daemon", "local0", "local1", "local2",
+                                                         "local3", "local4", "local5", "local6", "local7"};
+char syslog_severity_table[][SYSLOG_SEVERITY_LEN_MAX] = {"emergency", "alert", "critical", "error", "warning", "notice", "informational", "debug"};
+
+/* define decoded http message */
+struct APP_MSG_SYSLOG {
+   uint32_t priority;
+   uint32_t version;
+   char timestamp[SYSLOG_HEADER_SHORT_LEN_MAX];
+   char hostname[SYSLOG_HEADER_LEN_MAX];
+   char appname[SYSLOG_HEADER_SHORT_LEN_MAX];
+   char procid[SYSLOG_HEADER_SHORT_LEN_MAX];
+   char msgid[SYSLOG_HEADER_SHORT_LEN_MAX];
+   char data[SYSLOG_HEADER_LEN_MAX];
+   char message[SYSLOG_HEADER_LEN_MAX];
+};
+
 /* define app message */
 struct APP_MSG {
     uint8_t  type;
