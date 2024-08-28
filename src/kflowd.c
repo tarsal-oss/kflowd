@@ -246,8 +246,8 @@ static struct JSON_KEY jkey[] = {
     {I_APP_RX_DNS, {"AppRxDns"}, "Messages received by DNS application layer"},
     {I_APP_TX_HTTP, {"AppTxHttp"}, "Messages transmitted by HTTP application layer"},
     {I_APP_RX_HTTP, {"AppRxHttp"}, "Messages received by HTTP application layer"},
-    {I_APP_TX_HTTP, {"AppTxSyslog"}, "Messages transmitted by SYSLOG application layer"},
-    {I_APP_RX_HTTP, {"AppRxSyslog"}, "Messages received by SYSLOG application layer"}};
+    {I_APP_TX_SYSLOG, {"AppTxSyslog"}, "Messages transmitted by SYSLOG application layer"},
+    {I_APP_RX_SYSLOG, {"AppRxSyslog"}, "Messages received by SYSLOG application layer"}};
 
 static struct JSON_SUB_KEY jsubkeys[] = {
     {I_FILE_EVENTS,
@@ -303,8 +303,30 @@ static struct JSON_SUB_KEY jsubkeys[] = {
       {"_Reason", "HTTP response reason phrase"},
       {"[Header]", "HTTP standard and non-standard headers"},
       {"_Body", "HTTP message body"}}},
-    {I_APP_TX_SYSLOG, {{"_TBD1", ""}, {"_TBD2", ""}}},
-    {I_APP_RX_SYSLOG, {{"_TBD1", ""}, {"_TBD1", ""}}}};
+    {I_APP_TX_SYSLOG,
+     {{"Facility", "SYSLOG facility like kernel, user, ..."},
+      {"Severity", "SYSLOG severity like emergency, alert, ..."},
+      {"Priority", "SYSLOG priority defining facility and severity"},
+      {"Version", "SYSLOG version number"},
+      {"Timestamp", "SYSLOG timestamp"},
+      {"Hostname", "SYSLOG host name"},
+      {"Appname", "SYSLOG application name"},
+      {"ProcId", "SYSLOG process id"},
+      {"MsgId", "SYSLOG message id"},
+      {"Data", "SYSLOG structure data"},
+      {"Message", "SYSLOG message"}}},
+    {I_APP_RX_SYSLOG,
+     {{"Facility", "SYSLOG facility like kernel, user, ..."},
+      {"Severity", "SYSLOG severity like emergency, alert, ..."},
+      {"Priority", "SYSLOG priority defining facility and severity"},
+      {"Version", "SYSLOG version number"},
+      {"Timestamp", "SYSLOG timestamp"},
+      {"Hostname", "SYSLOG host name"},
+      {"Appname", "SYSLOG application name"},
+      {"ProcId", "SYSLOG process id"},
+      {"MsgId", "SYSLOG message id"},
+      {"Data", "SYSLOG structure data"},
+      {"Message", "SYSLOG message"}}}};
 
 static struct FS_PERM fsperm[] = {
     {I_USER_READ, USER_READ, 'r'},   {I_USER_WRITE, USER_WRITE, 'w'},   {I_USER_EXE, USER_EXE, 'x'},
@@ -624,8 +646,9 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
 
             /* decode first tx and then rx messages */
             for (cntm = 0; cntm < app_msg->cnt * 2; cntm++) {
-                struct APP_MSG_DNS   dns = {0};
-                struct APP_MSG_HTTP  http = {0};
+                struct APP_MSG_DNS     dns = {0};
+                struct APP_MSG_HTTP    http = {0};
+                struct APP_MSG_SYSLOG  syslog = {0};
                 char *msg = NULL;
                 int mc = app_msg->cnt;
                 int idx = cntm % mc;
@@ -724,8 +747,27 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                     else
                         msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Decoder");
                 } else if (app_msg->type == APP_SYSLOG) {
-                    // TBD: decode in new module
-                    msg = mkjson(MKJ_OBJ, 1, J_STRING, "Message", app_msg->data[idx]);
+                    // TBD:  make module, escape syslog.data
+                    if (9 != sscanf(app_msg->data[idx], "<%u>%u %32s %255s %48s %48s %32s [%255[^]]] %255[^\n]", &syslog.priority, &syslog.version,
+                                syslog.timestamp, syslog.hostname, syslog.appname, syslog.procid, syslog.msgid, syslog.data, syslog.message)) {
+                        msg = mkjson(MKJ_OBJ, 2,
+                            J_STRING, "_Exception", "SYSLOG Message Decoder",
+                            J_STRING, "_Message", app_msg->data[idx]);
+                    }
+                    else {
+                        msg = mkjson(MKJ_OBJ, 11,
+                            J_STRING, "Facility", syslog_facility_table[syslog.priority/8],
+                            J_STRING, "Severity", syslog_severity_table[syslog.priority%8],
+                            J_UINT, "Priority", syslog.priority,
+                            J_UINT, "Version", syslog.version,
+                            J_STRING, "Timestamp", syslog.timestamp,
+                            J_STRING, "Hostname", syslog.hostname,
+                            J_STRING, "Appname", syslog.appname,
+                            J_STRING, "ProcId", syslog.procid,
+                            J_STRING, "MsgId", syslog.msgid,
+                            J_STRING, "Date", syslog.data,
+                            J_STRING, "Message", syslog.message);
+                    }
                 }
 
                 if(msg) {
