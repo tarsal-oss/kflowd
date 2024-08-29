@@ -440,30 +440,48 @@ struct APP_MSG_HTTP {
     char     body[HTTP_BODY_LEN_MAX];
 };
 
-
-
-#define SYSLOG_FACILITY_LEN_MAX 32
-#define SYSLOG_SEVERITY_LEN_MAX 16
+#define SYSLOG_FACILITY_LEN_MAX     32
+#define SYSLOG_SEVERITY_LEN_MAX     16
 #define SYSLOG_HEADER_SHORT_LEN_MAX 48
-#define SYSLOG_HEADER_LEN_MAX 255
-char syslog_facility_table[][SYSLOG_FACILITY_LEN_MAX] = {"kernel", "user", "mail system",  "system daemon",
-                                                         "security/authorization", "internal", "line printer", "network news",
-                                                         "uucp", "clock daemon", "security/authorization", "ftp daemon", "ntp",
-                                                         "log audit", "log alert", "clock daemon", "local0", "local1", "local2",
-                                                         "local3", "local4", "local5", "local6", "local7"};
-char syslog_severity_table[][SYSLOG_SEVERITY_LEN_MAX] = {"emergency", "alert", "critical", "error", "warning", "notice", "informational", "debug"};
+#define SYSLOG_HEADER_LEN_MAX       255
+char syslog_facility_table[][SYSLOG_FACILITY_LEN_MAX] = {"kernel",
+                                                         "user",
+                                                         "mail system",
+                                                         "system daemon",
+                                                         "security/authorization",
+                                                         "internal",
+                                                         "line printer",
+                                                         "network news",
+                                                         "uucp",
+                                                         "clock daemon",
+                                                         "security/authorization",
+                                                         "ftp daemon",
+                                                         "ntp",
+                                                         "log audit",
+                                                         "log alert",
+                                                         "clock daemon",
+                                                         "local0",
+                                                         "local1",
+                                                         "local2",
+                                                         "local3",
+                                                         "local4",
+                                                         "local5",
+                                                         "local6",
+                                                         "local7"};
+char syslog_severity_table[][SYSLOG_SEVERITY_LEN_MAX] = {"emergency", "alert",  "critical",      "error",
+                                                         "warning",   "notice", "informational", "debug"};
 
 /* define decoded http message */
 struct APP_MSG_SYSLOG {
-   uint32_t priority;
-   uint32_t version;
-   char timestamp[SYSLOG_HEADER_SHORT_LEN_MAX];
-   char hostname[SYSLOG_HEADER_LEN_MAX];
-   char appname[SYSLOG_HEADER_SHORT_LEN_MAX];
-   char procid[SYSLOG_HEADER_SHORT_LEN_MAX];
-   char msgid[SYSLOG_HEADER_SHORT_LEN_MAX];
-   char data[SYSLOG_HEADER_LEN_MAX];
-   char message[SYSLOG_HEADER_LEN_MAX];
+    uint32_t priority;
+    uint32_t version;
+    char     timestamp[SYSLOG_HEADER_SHORT_LEN_MAX];
+    char     hostname[SYSLOG_HEADER_LEN_MAX];
+    char     appname[SYSLOG_HEADER_SHORT_LEN_MAX];
+    char     procid[SYSLOG_HEADER_SHORT_LEN_MAX];
+    char     msgid[SYSLOG_HEADER_SHORT_LEN_MAX];
+    char     data[SYSLOG_HEADER_LEN_MAX];
+    char     message[SYSLOG_HEADER_LEN_MAX];
 };
 
 /* define app message */
@@ -679,10 +697,11 @@ struct XFILES {
 };
 
 /* define plugins types, functions and search path */
-enum PLUGIN_TYPE { P_DNS, P_HTTP, P_VIRUS, P_VULN, P_DEVICE, P_INTERFACE, P_USER_GROUP, P_MAX };
+enum PLUGIN_TYPE { P_DNS, P_HTTP, P_SYSLOG, P_VIRUS, P_VULN, P_DEVICE, P_INTERFACE, P_USER_GROUP, P_MAX };
 typedef int (*plugin_func)();
 typedef int plugin_dns_func(char *, int, struct APP_MSG_DNS *);
 typedef int plugin_http_func(char *, int, struct APP_MSG_HTTP *);
+typedef int plugin_syslog_func(char *, int, struct APP_MSG_SYSLOG *);
 typedef int plugin_virus_func(int, const char *, const char *, char *);
 struct bpf_map; /* eliminate compiler warning */
 typedef int plugin_vuln_func(struct bpf_map *, int *, char *, int, char *);

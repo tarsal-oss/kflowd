@@ -341,6 +341,7 @@ static char *mkjson_prettify(const char *, char *);
 /* plugin function pointer definitions */
 static plugin_dns_func        *plugin_dns_decode = NULL;
 static plugin_http_func       *plugin_http_decode = NULL;
+static plugin_syslog_func     *plugin_syslog_decode = NULL;
 static plugin_virus_func      *plugin_virus_get_checksum = NULL;
 static plugin_vuln_func       *plugin_vuln_version_cache = NULL;
 static plugin_device_func     *plugin_device_cache = NULL;
@@ -355,6 +356,7 @@ struct PLUGIN_INFO {
 } plugin[] = {
     {&plugin_dns_decode, "plugin_dns_decode", "kflowd_mod_dns.so", "DNS", "DNS Decoder"},
     {&plugin_http_decode, "plugin_http_decode", "kflowd_mod_http.so", "HTTP", "HTTP Decoder"},
+    {&plugin_syslog_decode, "plugin_syslog_decode", "kflowd_mod_syslog.so", "SYSLOG", "SYSLOG Decoder"},
     {&plugin_virus_get_checksum, "plugin_virus_get_checksum", "kflowd_mod_virus.so", "Virus", "Virus Checksum"},
     {&plugin_vuln_version_cache, "plugin_vuln_version_cache", "kflowd_mod_vuln.so", "Vuln",
      "File/Process Version Vulnerability"},
@@ -638,7 +640,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         app_msg = (struct APP_MSG *)&rs->app_msg;
         if (app_msg->cnt && ((app_msg->type == APP_DNS && plugin_dns_decode) ||
                              (app_msg->type == APP_HTTP && plugin_http_decode) ||
-                             (app_msg->type == APP_SYSLOG /* && plugin_syslog_decode */))) {
+                             (app_msg->type == APP_SYSLOG && plugin_syslog_decode))) {
             char                *app_tx_msg[APP_MSG_MAX] = {0};
             char                *app_rx_msg[APP_MSG_MAX] = {0};
             int                  app_tx_msg_cnt = 0;
@@ -746,28 +748,26 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                         msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Body", http.body);
                     else
                         msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Decoder");
-                } else if (app_msg->type == APP_SYSLOG) {
+                } else if (app_msg->type == APP_SYSLOG && !plugin_syslog_decode(app_msg->data[idx], app_msg->len[idx], &syslog)) {
                     // TBD:  make module, escape syslog.data
-                    if (9 != sscanf(app_msg->data[idx], "<%u>%u %32s %255s %48s %48s %32s [%255[^]]] %255[^\n]", &syslog.priority, &syslog.version,
-                                syslog.timestamp, syslog.hostname, syslog.appname, syslog.procid, syslog.msgid, syslog.data, syslog.message)) {
-                        msg = mkjson(MKJ_OBJ, 2,
-                            J_STRING, "_Exception", "SYSLOG Message Decoder",
-                            J_STRING, "_Message", app_msg->data[idx]);
-                    }
-                    else {
-                        msg = mkjson(MKJ_OBJ, 11,
-                            J_STRING, "Facility", syslog_facility_table[syslog.priority/8],
-                            J_STRING, "Severity", syslog_severity_table[syslog.priority%8],
-                            J_UINT, "Priority", syslog.priority,
-                            J_UINT, "Version", syslog.version,
-                            J_STRING, "Timestamp", syslog.timestamp,
-                            J_STRING, "Hostname", syslog.hostname,
-                            J_STRING, "Appname", syslog.appname,
-                            J_STRING, "ProcId", syslog.procid,
-                            J_STRING, "MsgId", syslog.msgid,
-                            J_STRING, "Date", syslog.data,
-                            J_STRING, "Message", syslog.message);
-                    }
+                    //if (9 != sscanf(app_msg->data[idx], "<%u>%u %32s %255s %48s %48s %32s [%255[^]]] %255[^\n]", &syslog.priority, &syslog.version,
+                    //            syslog.timestamp, syslog.hostname, syslog.appname, syslog.procid, syslog.msgid, syslog.data, syslog.message)) {
+                    msg = mkjson(MKJ_OBJ, 11,
+                        J_STRING, "Facility", syslog_facility_table[syslog.priority/8],
+                        J_STRING, "Severity", syslog_severity_table[syslog.priority%8],
+                        J_UINT, "Priority", syslog.priority,
+                        J_UINT, "Version", syslog.version,
+                        J_STRING, "Timestamp", syslog.timestamp,
+                        J_STRING, "Hostname", syslog.hostname,
+                        J_STRING, "Appname", syslog.appname,
+                        J_STRING, "ProcId", syslog.procid,
+                        J_STRING, "MsgId", syslog.msgid,
+                        J_STRING, "Data", syslog.data,
+                        J_STRING, "Message", syslog.message);
+                } else if (app_msg->type == APP_SYSLOG) {
+                    msg = mkjson(MKJ_OBJ, 2,
+                        J_STRING, "_Exception", "SYSLOG Message Decoder",
+                        J_STRING, "_Message", app_msg->data[idx]);
                 }
 
                 if(msg) {
