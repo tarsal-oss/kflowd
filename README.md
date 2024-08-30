@@ -20,7 +20,7 @@ Final messages are printed to stdout console and can be sent via UDP protocol to
 kflowd runs on Linux kernels 5.10+ and is built with the **libbpf+CO-RE** (Compile-Once-Run-Everywhere) eBPF development toolchain using **BTF** (BPF Type Format) to allow portability by avoiding dependencies on differences in kernel headers between kernel versions on deployment.
 <div align="left">
 <picture>
-<img src="https://github.com/tarsal-oss/kflowd/assets/108887718/e035cbae-f421-4221-ad9a-d64c90d3f249" width="800">
+<img src="https://github.com/user-attachments/assets/7d2dd1cf-0b77-4049-91e3-41151d9f5ab4" width="1000">
 </picture>
 </div>
 
