@@ -209,14 +209,15 @@ static struct JSON_KEY jkey[] = {
     {I_FILE_MODIFICATION_TIME_CHANGE, {"FileModificationTimeChange"}, "Elapsed seconds since last modification"},
     {I_FILE_CHECKSUM_MD5, {"FileMD5", "file_md5", "fileMD5"}, "MD5 hash checksum of file"},
     {I_FILE_CHECKSUM_SHA256, {"FileSHA256", "file_sha256", "fileSha256"}, "SHA256 hash checksum of file"},
-    {I_SOCK_PROTOCOL, {"SockProtocol"}, "Socket protocol of either TCP or UDP"},
+    {I_SOCK_PROTOCOL, {"SockProtocol"}, "Socket protocol of either TCP, UDP or UNIX"},
     {I_SOCK_ROLE, {"SockRole"}, "Socket role of either client or server"},
     {I_SOCK_STATE, {"SockState"}, "TCP or UDP state of socket"},
-    {I_SOCK_FAMILY, {"SockFamily"}, "Socket Family of either AF_INET or AF_INET6"},
+    {I_SOCK_FAMILY, {"SockFamily"}, "Socket Family of either AF_INET, AF_INET6 or AF_UNIX"},
     {I_SOCK_LOCAL_IP, {"SockLocalIP"}, "Local IPv4 or IPv6 address of socket"},
     {I_SOCK_LOCAL_PORT, {"SockLocalPort"}, "Local TCP or UDP port of socket"},
     {I_SOCK_REMOTE_IP, {"SockRemoteIP"}, "Remote IPv4 or IPv6 address of socket"},
     {I_SOCK_REMOTE_PORT, {"SockRemotePort"}, "Remote TCP or UDP port of socket"},
+    {I_SOCK_ADDRESS, {"SockAddress"}, "Address of UNIX socket"},
     {I_SOCK_TX_INTERFACE, {"SockTxInterface"}, "Egress interface index, name and mac for tx packets on socket"},
     {I_SOCK_TX_DATA_PACKETS, {"SockTxDataPackets"}, "Transmitted data packets on socket"},
     {I_SOCK_TX_PACKETS, {"SockTxPackets"}, "Transmitted packets on socket"},
@@ -308,6 +309,7 @@ static struct JSON_SUB_KEY jsubkeys[] = {
       {"Severity", "SYSLOG severity like emergency, alert, ..."},
       {"Priority", "SYSLOG priority defining facility and severity"},
       {"Version", "SYSLOG version number"},
+      {"Length", "SYSLOG record length"},
       {"Timestamp", "SYSLOG timestamp"},
       {"Hostname", "SYSLOG host name"},
       {"Appname", "SYSLOG application name"},
@@ -320,6 +322,7 @@ static struct JSON_SUB_KEY jsubkeys[] = {
       {"Severity", "SYSLOG severity like emergency, alert, ..."},
       {"Priority", "SYSLOG priority defining facility and severity"},
       {"Version", "SYSLOG version number"},
+      {"Length", "SYSLOG record length"},
       {"Timestamp", "SYSLOG timestamp"},
       {"Hostname", "SYSLOG host name"},
       {"Appname", "SYSLOG application name"},
@@ -531,16 +534,22 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         inet_ntop(rs->family, rs->laddr, localip, INET6_ADDRSTRLEN);
         inet_ntop(rs->family, rs->raddr, remoteip, INET6_ADDRSTRLEN);
 
-        json_obj[J_SOCK] = mkjson(MKJ_OBJ, 8,
-            J_STRING, JKEY(I_SOCK_PROTOCOL), rs->proto == IPPROTO_TCP ? "TCP" : "UDP",
-            J_STRING, JKEY(I_SOCK_ROLE), rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER ? "SERVER" : "CLIENT",
-            J_STRING, JKEY(I_SOCK_STATE), rs->proto == IPPROTO_TCP ? tcp_state_table[rs->state > 0 ? rs->state : 0]
-                                            : (rs->state == UDP_ESTABLISHED ? "UDP_ESTABLISHED" : "UDP_CLOSE"),
-            J_STRING, JKEY(I_SOCK_FAMILY), rs->family == AF_INET ? "AF_INET" : "AF_INET6",
-            J_STRING, JKEY(I_SOCK_LOCAL_IP), localip,
-            J_UINT, JKEY(I_SOCK_LOCAL_PORT), rs->lport,
-            J_STRING, JKEY(I_SOCK_REMOTE_IP), remoteip,
-            J_UINT, JKEY(I_SOCK_REMOTE_PORT), rs->rport);
+        if(rs->family != AF_UNIX)
+            json_obj[J_SOCK] = mkjson(MKJ_OBJ, 8,
+                J_STRING, JKEY(I_SOCK_PROTOCOL), rs->proto == IPPROTO_TCP ? "TCP" : "UDP",
+                J_STRING, JKEY(I_SOCK_ROLE), rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER ? "SERVER" : "CLIENT",
+                J_STRING, JKEY(I_SOCK_STATE), rs->proto == IPPROTO_TCP ? tcp_state_table[rs->state > 0 ? rs->state : 0]
+                                                : (rs->state == UDP_ESTABLISHED ? "UDP_ESTABLISHED" : "UDP_CLOSE"),
+                J_STRING, JKEY(I_SOCK_FAMILY), rs->family == AF_INET ? "AF_INET" : "AF_INET6",
+                J_STRING, JKEY(I_SOCK_LOCAL_IP), localip,
+                J_UINT, JKEY(I_SOCK_LOCAL_PORT), rs->lport,
+                J_STRING, JKEY(I_SOCK_REMOTE_IP), remoteip,
+                J_UINT, JKEY(I_SOCK_REMOTE_PORT), rs->rport);
+        else
+            json_obj[J_SOCK] = mkjson(MKJ_OBJ, 3,
+                J_STRING, JKEY(I_SOCK_ROLE), rs->role == ROLE_UNIX_SERVER ? "SERVER" : "CLIENT",
+                J_STRING, JKEY(I_SOCK_ADDRESS), SYSLOG_SOCKET,
+                J_STRING, JKEY(I_SOCK_FAMILY), "AF_UNIX");
 
         /* sock tx */
         if (rs->tx_packets) {
@@ -569,22 +578,26 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
             }
 
             snprintf(ts1, sizeof(ts1), "%.09f", (rs->tx_ts - rs->tx_ts_first) / 1e9);
-            if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER)
+            if(rs->role == ROLE_TCP_SERVER || rs->role == ROLE_UDP_SERVER || rs->role == ROLE_UNIX_SERVER)
                 j_type_tx = J_SOCK_SERVER_TX;
             else
                 j_type_tx = J_SOCK_CLIENT_TX;
-            json_obj[j_type_tx] = mkjson(MKJ_OBJ, 11,
-                J_STRING, JKEY(I_SOCK_TX_INTERFACE), cache_interface[rs->tx_ifindex] ? cache_interface[rs->tx_ifindex] : "",
-                rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_DATA_PACKETS), rs->tx_data_packets,
-                J_UINT, JKEY(I_SOCK_TX_PACKETS), rs->tx_packets,
-                rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_PACKETS_RETRANS), rs->tx_packets_retrans,
-                rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_PACKETS_DUPS), rs->tx_packets_dups,
-                rs->proto == IPPROTO_TCP ? J_JSON : J_IGN_JSON, JKEY(I_SOCK_TX_FLAGS), tx_flags[0] ? tx_flags : "{}",
-                J_TIMESTAMP, JKEY(I_SOCK_TX_DURATION), rs->tx_ts > rs->tx_ts_first ? ts1 : "0",
-                J_LLUINT, JKEY(I_SOCK_TX_BYTES), rs->tx_bytes,
-                rs->proto == IPPROTO_TCP ? J_LLUINT : J_IGN_LLUINT, JKEY(I_SOCK_TX_BYTES_ACKED), rs->tx_bytes_acked,
-                rs->proto == IPPROTO_TCP ? J_LLUINT : J_IGN_LLUINT, JKEY(I_SOCK_TX_BYTES_RETRANS), rs->tx_bytes_retrans,
-                rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_RTO), rs->tx_rto);
+            if(rs->family != AF_UNIX)
+                json_obj[j_type_tx] = mkjson(MKJ_OBJ, 11,
+                    J_STRING, JKEY(I_SOCK_TX_INTERFACE), cache_interface[rs->tx_ifindex] ? cache_interface[rs->tx_ifindex] : "",
+                    rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_DATA_PACKETS), rs->tx_data_packets,
+                    J_UINT, JKEY(I_SOCK_TX_PACKETS), rs->tx_packets,
+                    rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_PACKETS_RETRANS), rs->tx_packets_retrans,
+                    rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_PACKETS_DUPS), rs->tx_packets_dups,
+                    rs->proto == IPPROTO_TCP ? J_JSON : J_IGN_JSON, JKEY(I_SOCK_TX_FLAGS), tx_flags[0] ? tx_flags : "{}",
+                    J_TIMESTAMP, JKEY(I_SOCK_TX_DURATION), rs->tx_ts > rs->tx_ts_first ? ts1 : "0",
+                    J_LLUINT, JKEY(I_SOCK_TX_BYTES), rs->tx_bytes,
+                    rs->proto == IPPROTO_TCP ? J_LLUINT : J_IGN_LLUINT, JKEY(I_SOCK_TX_BYTES_ACKED), rs->tx_bytes_acked,
+                    rs->proto == IPPROTO_TCP ? J_LLUINT : J_IGN_LLUINT, JKEY(I_SOCK_TX_BYTES_RETRANS), rs->tx_bytes_retrans,
+                    rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_TX_RTO), rs->tx_rto);
+            else
+                json_obj[j_type_tx] = mkjson(MKJ_OBJ, 1,
+                    J_LLUINT, JKEY(I_SOCK_TX_BYTES), rs->tx_bytes);
         }
         /* sock rx */
         if (rs->rx_packets) {
@@ -619,25 +632,30 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                 j_type_rx = J_SOCK_SERVER_RX;
             else
                 j_type_rx = J_SOCK_CLIENT_RX;
-            json_obj[j_type_rx] = mkjson(MKJ_OBJ, 12,
-                J_STRING, JKEY(I_SOCK_RX_INTERFACE), cache_interface[rs->rx_ifindex] ? cache_interface[rs->rx_ifindex] : "",
-                rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_RX_DATA_PACKETS), rs->rx_data_packets,
-                J_UINT, JKEY(I_SOCK_RX_PACKETS), rs->rx_packets,
-                J_UINT, JKEY(I_SOCK_RX_PACKETS_QUEUED), rs->rx_packets_queued,
-                J_UINT, JKEY(I_SOCK_RX_PACKETS_DROP), rs->rx_packets_drop,
-                rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_RX_PACKETS_REORDER), rs->rx_packets_reorder,
-                J_UINT, JKEY(I_SOCK_RX_PACKETS_FRAG), rs->rx_packets_frag,
-                rs->proto == IPPROTO_TCP ? J_JSON : J_IGN_JSON, JKEY(I_SOCK_RX_FLAGS), rx_flags[0] ? rx_flags : "{}",
-                J_TIMESTAMP, JKEY(I_SOCK_RX_DURATION), rs->rx_ts > rs->rx_ts_first ? ts1 : "0",
-                J_LLUINT, JKEY(I_SOCK_RX_BYTES), rs->rx_bytes,
-                J_UINT, JKEY(I_SOCK_RX_TTL), rs->rx_ttl,
-                rs->proto == IPPROTO_TCP ? J_TIMESTAMP : J_IGN_TIMESTAMP, JKEY(I_SOCK_RTT), rs->rtt ? ts2 : "0");
+            if(rs->family != AF_UNIX)
+                json_obj[j_type_rx] = mkjson(MKJ_OBJ, 12,
+                    J_STRING, JKEY(I_SOCK_RX_INTERFACE), cache_interface[rs->rx_ifindex] ? cache_interface[rs->rx_ifindex] : "",
+                    rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_RX_DATA_PACKETS), rs->rx_data_packets,
+                    J_UINT, JKEY(I_SOCK_RX_PACKETS), rs->rx_packets,
+                    J_UINT, JKEY(I_SOCK_RX_PACKETS_QUEUED), rs->rx_packets_queued,
+                    J_UINT, JKEY(I_SOCK_RX_PACKETS_DROP), rs->rx_packets_drop,
+                    rs->proto == IPPROTO_TCP ? J_UINT : J_IGN_UINT, JKEY(I_SOCK_RX_PACKETS_REORDER), rs->rx_packets_reorder,
+                    J_UINT, JKEY(I_SOCK_RX_PACKETS_FRAG), rs->rx_packets_frag,
+                    rs->proto == IPPROTO_TCP ? J_JSON : J_IGN_JSON, JKEY(I_SOCK_RX_FLAGS), rx_flags[0] ? rx_flags : "{}",
+                    J_TIMESTAMP, JKEY(I_SOCK_RX_DURATION), rs->rx_ts > rs->rx_ts_first ? ts1 : "0",
+                    J_LLUINT, JKEY(I_SOCK_RX_BYTES), rs->rx_bytes,
+                    J_UINT, JKEY(I_SOCK_RX_TTL), rs->rx_ttl,
+                    rs->proto == IPPROTO_TCP ? J_TIMESTAMP : J_IGN_TIMESTAMP, JKEY(I_SOCK_RTT), rs->rtt ? ts2 : "0");
+            else
+                json_obj[j_type_rx] = mkjson(MKJ_OBJ, 1,
+                    J_LLUINT, JKEY(I_SOCK_RX_BYTES), rs->rx_bytes);
         }
         snprintf(ts1, sizeof(ts1), "%.09f", (r->ts - r->ts_first) / 1e9);
         json_obj[J_SOCK_AGE] = mkjson(MKJ_OBJ, 1, J_TIMESTAMP, JKEY(I_SOCK_AGE), r->ts > r->ts_first ? ts1 : "0");
 
         /* app */
         app_msg = (struct APP_MSG *)&rs->app_msg;
+        printf("### APP_MSG_TYPE: %u  CNT: %u\n", app_msg->type, app_msg->cnt);
         if (app_msg->cnt && ((app_msg->type == APP_DNS && plugin_dns_decode) ||
                              (app_msg->type == APP_HTTP && plugin_http_decode) ||
                              (app_msg->type == APP_SYSLOG && plugin_syslog_decode))) {

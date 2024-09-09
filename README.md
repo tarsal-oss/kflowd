@@ -12,7 +12,10 @@
 ## Kernel-based Process Monitoring on Linux Endpoints via eBPF
 
 ### kflowd runs as agent on Linux endpoints to monitor processes via eBPF kernel subsystem for filesystem and TCP and UDP networking events, enabling immediate threat and anomaly detection on suspicious activities.
-#### Advanced non-ebpf related features such as DNS and HTTP application message decoding, checksum calculation for virus detection, process and file versioning for vulnerability detection and file device, network interface and user-group identification for files and processes can be enabled via open-binary plugin modules. These modules can be downloaded [here](https://tarsal.co/kflowd-download/) or please contact us at [kflow@tarsal.co](mailto:kflow@tarsal.co) for more details.
+#### Advanced non-ebpf related features such as DNS, HTTP and SYSLOG application message decoding, checksum calculation for virus detection, process and file versioning for vulnerability detection and file device, network interface and user-group identification for files and processes can be enabled via open-binary plugin modules. These modules as well as pre-built kflowd packages can be downloaded from the links below or please contact us at [kflow@tarsal.co](mailto:kflow@tarsal.co) for more details.
+- [kflowd binaries and packages (zipped, RPM, DEB)](https://github.com/tarsal-oss/kflowd/actions/workflows/kflowd-ci.yml)
+- [kflowd-plugins packages (RPM, DEB)](https://tarsal.co/kflowd-download/)
+
 kflowd contains an eBPF program running in kernel context and its control application running in userspace.<br>
 The eBPF program traces kernel functions to monitor processes based on file system and networking events. Events are aggregated into records and submitted into a ringbuffer where they are polled by the userspace control application. All Records are enriched with process information and then converted into a message in JSON output format.<br>
 Final messages are printed to stdout console and can be sent via UDP protocol to specified hosts for ingestion in a security data pipeline.
@@ -262,6 +265,18 @@ kflowd outputs JSON messages generated for each record of aggregated file system
     "Server": "ip-10-123-123-119.ec2.internal",
     "X-Request-Id": "5c331cbe-fbe1-40ea-ba2b-989691e687a0",
     "_Body": "<a href=\"https://kflowd.github.io\">Moved Permanently</a>."
+  }]
+}
+```
+</details>
+
+<details open>
+<summary>&nbsp;UNIX Socket + SYSLOG Record (tbd)</summary>
+
+```
+{
+  "InfoSequenceNumber": 3,
+  ...
   }]
 }
 ```

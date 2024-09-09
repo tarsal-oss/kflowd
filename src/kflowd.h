@@ -280,6 +280,7 @@ enum check { c_fail, c_ok, c_warn };
 #define ETH_HLEN        14
 #define ETH_P_IP        0x0800
 #define ETH_P_IPV6      0x86DD
+#define AF_UNIX         1
 #define AF_INET         2
 #define AF_INET6        10
 #define IP_ADDR_LEN_MAX 16
@@ -324,12 +325,14 @@ enum check { c_fail, c_ok, c_warn };
 #define SKB_DST_PTRMASK ~(SKB_DST_NOREF)
 
 /* define tcp and udp roles */
-enum ROLE { ROLE_NONE, ROLE_TCP_CLIENT, ROLE_TCP_SERVER, ROLE_UDP_CLIENT, ROLE_UDP_SERVER };
+enum ROLE { ROLE_NONE, ROLE_TCP_CLIENT, ROLE_TCP_SERVER, ROLE_UDP_CLIENT, ROLE_UDP_SERVER, ROLE_UNIX_CLIENT, ROLE_UNIX_SERVER  };
 #define GET_ROLE_STR(role)                                                                                             \
     (role == ROLE_TCP_CLIENT   ? "tcp client"                                                                          \
      : role == ROLE_TCP_SERVER ? "tcp server"                                                                          \
      : role == ROLE_UDP_CLIENT ? "udp client"                                                                          \
      : role == ROLE_UDP_SERVER ? "udp server"                                                                          \
+     : role == ROLE_UNIX_CLIENT ? "unix client"                                                                          \
+     : role == ROLE_UNIX_SERVER ? "unix server"                                                                          \
                                : "unknown")
 
 /* define tcp flags */
@@ -440,10 +443,13 @@ struct APP_MSG_HTTP {
     char     body[HTTP_BODY_LEN_MAX];
 };
 
+/* dfine syslog constants */
 #define SYSLOG_FACILITY_LEN_MAX     32
 #define SYSLOG_SEVERITY_LEN_MAX     16
 #define SYSLOG_HEADER_SHORT_LEN_MAX 48
 #define SYSLOG_HEADER_LEN_MAX       255
+#define SYSLOG_SOCKET_LEN           29
+#define SYSLOG_SOCKET               "/run/systemd/journal/dev-log"
 char syslog_facility_table[][SYSLOG_FACILITY_LEN_MAX] = {"kernel",
                                                          "user",
                                                          "mail system",
@@ -567,7 +573,8 @@ struct SOCK_QUEUE {
 /* define socket event info */
 struct SOCK_EVENT_INFO {
     struct sock    *sock;
-    struct sk_buff *skb;
+    struct sk_buff *skb; /* tcp, udp sockets */
+    struct msghdr  *msg; /* unix socket */
     uint16_t        family;
     uint16_t        lport;
     uint16_t        rport;
@@ -790,6 +797,7 @@ enum INDEX_JSON_KEY {
     I_SOCK_LOCAL_PORT,
     I_SOCK_REMOTE_IP,
     I_SOCK_REMOTE_PORT,
+    I_SOCK_ADDRESS,
     I_SOCK_TX_INTERFACE,
     I_SOCK_TX_DATA_PACKETS,
     I_SOCK_TX_PACKETS,
