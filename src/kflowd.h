@@ -261,6 +261,7 @@ struct SOCK_EVENT {
 #define DNS_RDATA_DEC_LEN_MAX     512
 #define DNS_QTYPE_MAX             (int)(sizeof(dns_qtypes) / sizeof(struct DNS_QTYPE))
 #define SYSLOG_PORT               514
+#define UNIX_SEGS_MAX             32
 
 /* define application constants */
 enum APP_TYPE { APP_DNS, APP_HTTP, APP_SYSLOG, APP_MAX };
@@ -284,6 +285,7 @@ enum check { c_fail, c_ok, c_warn };
 #define AF_INET         2
 #define AF_INET6        10
 #define IP_ADDR_LEN_MAX 16
+#define UNIX_PATH_MAX   108
 
 /* define ip fragmentation flags */
 #define IP_RF      0x8000
@@ -325,15 +327,23 @@ enum check { c_fail, c_ok, c_warn };
 #define SKB_DST_PTRMASK ~(SKB_DST_NOREF)
 
 /* define tcp and udp roles */
-enum ROLE { ROLE_NONE, ROLE_TCP_CLIENT, ROLE_TCP_SERVER, ROLE_UDP_CLIENT, ROLE_UDP_SERVER, ROLE_UNIX_CLIENT, ROLE_UNIX_SERVER  };
+enum ROLE {
+    ROLE_NONE,
+    ROLE_TCP_CLIENT,
+    ROLE_TCP_SERVER,
+    ROLE_UDP_CLIENT,
+    ROLE_UDP_SERVER,
+    ROLE_UNIX_CLIENT,
+    ROLE_UNIX_SERVER
+};
 #define GET_ROLE_STR(role)                                                                                             \
-    (role == ROLE_TCP_CLIENT   ? "tcp client"                                                                          \
-     : role == ROLE_TCP_SERVER ? "tcp server"                                                                          \
-     : role == ROLE_UDP_CLIENT ? "udp client"                                                                          \
-     : role == ROLE_UDP_SERVER ? "udp server"                                                                          \
-     : role == ROLE_UNIX_CLIENT ? "unix client"                                                                          \
-     : role == ROLE_UNIX_SERVER ? "unix server"                                                                          \
-                               : "unknown")
+    (role == ROLE_TCP_CLIENT    ? "tcp client"                                                                         \
+     : role == ROLE_TCP_SERVER  ? "tcp server"                                                                         \
+     : role == ROLE_UDP_CLIENT  ? "udp client"                                                                         \
+     : role == ROLE_UDP_SERVER  ? "udp server"                                                                         \
+     : role == ROLE_UNIX_CLIENT ? "unix client"                                                                        \
+     : role == ROLE_UNIX_SERVER ? "unix server"                                                                        \
+                                : "unknown")
 
 /* define tcp flags */
 #define TCP_NONE 0
@@ -448,8 +458,8 @@ struct APP_MSG_HTTP {
 #define SYSLOG_SEVERITY_LEN_MAX     16
 #define SYSLOG_HEADER_SHORT_LEN_MAX 48
 #define SYSLOG_HEADER_LEN_MAX       255
-#define SYSLOG_SOCKET_LEN           29
-#define SYSLOG_SOCKET               "/run/systemd/journal/dev-log"
+#define SYSLOG_DEVLOG_SOCKET        "/run/systemd/journal/dev-log"
+#define SYSLOG_JOURNAL_SOCKET       "/run/systemd/journal/socket"
 char syslog_facility_table[][SYSLOG_FACILITY_LEN_MAX] = {"kernel",
                                                          "user",
                                                          "mail system",
@@ -534,6 +544,7 @@ struct SOCK_INFO {
     uint8_t        role;
     char           laddr[IP_ADDR_LEN_MAX];
     char           raddr[IP_ADDR_LEN_MAX];
+    char           addr[UNIX_PATH_MAX];
     uint16_t       lport;
     uint16_t       rport;
     uint64_t       ts_first;
@@ -653,6 +664,7 @@ struct RECORD_SOCK {
     uint8_t        role;
     char           laddr[IP_ADDR_LEN_MAX];
     char           raddr[IP_ADDR_LEN_MAX];
+    char           addr[UNIX_PATH_MAX];
     uint16_t       lport;
     uint16_t       rport;
     uint16_t       tx_ifindex;

@@ -275,8 +275,50 @@ kflowd outputs JSON messages generated for each record of aggregated file system
 
 ```
 {
-  "InfoSequenceNumber": 3,
-  ...
+  "InfoSequenceNumber": 4,
+  "InfoTimestamp": "Mon, Sep 16 2024 14:30:19.409100980 UTC",
+  "InfoMonitor": "socket",
+  "InfoHostName": "dev.kflow.co",
+  "InfoHostIP": "38.110.1.24",
+  "InfoSystem": "Linux",
+  "InfoKernel": "6.1.0-10-amd64",
+  "InfoVersion": "kflowd-v0.9.11",
+  "ProcParent": "cron",
+  "Proc": "cron",
+  "ProcVersion": "3.0pl1-137",
+  "ProcUser": "root",
+  "ProcGroup": "root",
+  "ProcPPID": 990,
+  "ProcPID": 2122368,
+  "ProcTID": 2122368,
+  "ProcUID": 0,
+  "ProcGID": 0,
+  "ProcAge": 18.100170007,
+  "SockRole": "CLIENT",
+  "SockAddress": "/run/systemd/journal/dev-log",
+  "SockFamily": "AF_UNIX",
+  "SockTxBytes": 192,
+  "SockAge": 18.095146325,
+  "App": "SYSLOG",
+  "AppTxSyslog": [{
+    "Facility": "security/authorization",
+    "Severity": "informational",
+    "Priority": 86,
+    "Version": 0,
+    "Timestamp": "Sep 16 14:30:01",
+    "Appname": "CRON",
+    "ProcId": "2122368",
+    "Message": "pam_unix(cron:session): session opened for user root(uid=0) by (uid=0)"
+  },
+  {
+    "Facility": "security/authorization",
+    "Severity": "informational",
+    "Priority": 86,
+    "Version": 0,
+    "Timestamp": "Sep 16 14:30:01",
+    "Appname": "CRON",
+    "ProcId": "2122368",
+    "Message": "pam_unix(cron:session): session closed for user root"
   }]
 }
 ```
