@@ -580,17 +580,17 @@ static __always_inline int submit_sock_record(struct SOCK_INFO *sinfo) {
     r->role = sinfo->role;
     r->proto = sinfo->proto;
     r->state = sinfo->state;
-    bpf_probe_read_kernel(r->laddr, IP_ADDR_LEN_MAX, sinfo->laddr);
-    bpf_probe_read_kernel(r->raddr, IP_ADDR_LEN_MAX, sinfo->raddr);
-    r->lport = sinfo->lport;
-    r->rport = sinfo->rport;
-    r->rx_ifindex = sinfo->rx_ifindex;
     r->rx_ts_first = sinfo->rx_ts_first;
     r->rx_ts = sinfo->rx_ts;
-    r->tx_ifindex = sinfo->tx_ifindex;
     r->tx_ts_first = sinfo->tx_ts_first;
     r->tx_ts = sinfo->tx_ts;
     if (sinfo->proto == IPPROTO_TCP) {
+        bpf_probe_read_kernel(r->laddr, IP_ADDR_LEN_MAX, sinfo->laddr);
+        bpf_probe_read_kernel(r->raddr, IP_ADDR_LEN_MAX, sinfo->raddr);
+        r->lport = sinfo->lport;
+        r->rport = sinfo->rport;
+        r->rx_ifindex = sinfo->rx_ifindex;
+        r->tx_ifindex = sinfo->tx_ifindex;
         r->rx_data_packets = sinfo->rx_data_packets;
         r->rx_packets = sinfo->rx_packets;
         if (sinfo->rx_flags_map[0] == TCP_SYN)
@@ -665,6 +665,12 @@ static __always_inline int submit_sock_record(struct SOCK_INFO *sinfo) {
         sinfo->tx_ts_first = sinfo->tx_ts = 0;
         sinfo->app_msg.cnt = 0;
     } else if (sinfo->proto == IPPROTO_UDP) {
+        bpf_probe_read_kernel(r->laddr, IP_ADDR_LEN_MAX, sinfo->laddr);
+        bpf_probe_read_kernel(r->raddr, IP_ADDR_LEN_MAX, sinfo->raddr);
+        r->lport = sinfo->lport;
+        r->rport = sinfo->rport;
+        r->rx_ifindex = sinfo->rx_ifindex;
+        r->tx_ifindex = sinfo->tx_ifindex;
         r->rx_packets = sinfo->rx_packets;
         r->rx_packets_queued = sinfo->rx_packets_queued;
         r->rx_packets_drop = sinfo->rx_packets_drop[1];
@@ -677,6 +683,7 @@ static __always_inline int submit_sock_record(struct SOCK_INFO *sinfo) {
         if (sinfo->app_msg.cnt)
             bpf_probe_read_kernel(&r->app_msg, sizeof(r->app_msg), &sinfo->app_msg);
     } else {
+        bpf_probe_read_kernel(r->addr, UNIX_PATH_MAX, sinfo->addr);
         r->rx_packets = sinfo->rx_packets;
         r->rx_bytes = sinfo->rx_bytes;
         r->tx_packets = sinfo->tx_packets;
@@ -1732,10 +1739,10 @@ static __always_inline int handle_udp_event(void *ctx, const struct SOCK_EVENT_I
         bpf_printk("  REMOTE: %pI6c:%u", sinfo->raddr, sinfo->rport);
     }
     if (is_app_port[APP_DNS])
-        bpf_printk("  DNS MESSAGE: %u  TRANSACTION ID: %u  LEN: %u", num, bpf_ntohs(*(__u16 *)sinfo->app_msg.data[num]),
-                   sinfo->app_msg.len[num]);
+        bpf_printk("  DNS MESSAGE[%u]:  TRANSACTION ID: %u  LEN: %u", num,
+                   bpf_ntohs(*(__u16 *)sinfo->app_msg.data[num]), sinfo->app_msg.len[num]);
     else if (is_app_port[APP_SYSLOG])
-        bpf_printk("  SYSLOG MESSAGE: %s  LEN: %u", sinfo->app_msg.data[num], sinfo->app_msg.len[num]);
+        bpf_printk("  SYSLOG MESSAGE[%u]: '%s'  LEN: %u", num, sinfo->app_msg.data[num], sinfo->app_msg.len[num]);
     bpf_printk("  TOTAL: TX %lu   RX %lu\n", sinfo->tx_bytes, sinfo->rx_bytes);
 
     return 0;
@@ -1812,7 +1819,6 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     struct msghdr      *msg;
     struct sock        *sock;
     struct unix_sock   *unix_sock;
-    struct unix_sock   *unix_sock_peer;
     struct SOCK_INFO   *sinfo;
     struct SOCK_QUEUE   sq = {0};
     struct STATS       *s;
@@ -1821,14 +1827,15 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     __u16               family;
     char               *func;
     bool                isrx;
-    __u8               *sysloghdr = NULL;
     __u64               key;
     __u64               ts_now;
     __u32               zero = 0;
     __u16               num = 0;
+    struct iovec       *iov;
+    int                 segs;
+    __u32               len;
+    __u16               ofs = 0;
     int                 cnt;
-    int                 cntp;
-    int                 cnts;
 
     /* ignore network events from self to prevent amplification loops */
     if (pid_self == pid)
@@ -1841,47 +1848,26 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     isrx = event->isrx;
     func = event->func;
 
-    /* check unix socket */
-    unix_sock = (struct unix_sock *)sock;
-    unix_sock_peer = (struct unix_sock *)BPF_CORE_READ(unix_sock, peer);
+    /* get unix socket and check syslog sockets */
+    if (isrx)
+        unix_sock = (struct unix_sock *)sock;
+    else
+        unix_sock = (struct unix_sock *)BPF_CORE_READ((struct unix_sock *)sock, peer);
     bpf_probe_read_kernel_str(comm, sizeof(comm), BPF_CORE_READ(task, mm, exe_file, f_path.dentry, d_name.name));
-    if (isrx) {
-        if (__builtin_memcmp(BPF_CORE_READ(unix_sock, addr, name[0].sun_path), SYSLOG_SOCKET, SYSLOG_SOCKET_LEN))
-            return 0;
-        bpf_printk("### UNIX DGRAM RECEIVE MESSAGE:  key %lx  pid %u  comm %s",
-                   KEY_SOCK(BPF_CORE_READ(sock, __sk_common.skc_hash)), pid, comm);
-        // bpf_printk("### SOCK: sport %u  dport %u", BPF_CORE_READ(sock, __sk_common.skc_num),
-        //            bpf_ntohs(BPF_CORE_READ(sock, __sk_common.skc_dport)));
-        bpf_printk("### UNIX SOCK: addr_len %u  addr_name_family %u  addr_name_family '%s'",
-                   BPF_CORE_READ(unix_sock, addr, len), BPF_CORE_READ(unix_sock, addr, name[0].sun_family),
-                   BPF_CORE_READ(unix_sock, addr, name[0].sun_path));
-        bpf_printk("### IOVEC: segs %u, count %u, len %u", BPF_CORE_READ(msg, msg_iter.nr_segs),
-                   BPF_CORE_READ(msg, msg_iter.count), BPF_CORE_READ(msg, msg_iter.iov, iov_len));
-        bpf_printk("### IOVEC: base '%s'\n", BPF_CORE_READ(msg, msg_iter.iov, iov_base));
-    } else {
-        if (__builtin_memcmp(BPF_CORE_READ(unix_sock_peer, addr, name[0].sun_path), SYSLOG_SOCKET, SYSLOG_SOCKET_LEN))
-            return 0;
-        bpf_printk("### UNIX DGRAM SEND MESSAGE:  key %lx  pid %u  comm %s",
-                   KEY_SOCK(BPF_CORE_READ(sock, __sk_common.skc_hash)), pid, comm);
-        // bpf_printk("### SOCK: sport %u  dport %u", BPF_CORE_READ(sock, __sk_common.skc_num),
-        //            bpf_ntohs(BPF_CORE_READ(sock, __sk_common.skc_dport)));
-        bpf_printk("### UNIX SOCK_PEER: addr_len %u  addr_name_family %u  addr_name_family '%s'",
-                   BPF_CORE_READ(unix_sock_peer, addr, len), BPF_CORE_READ(unix_sock_peer, addr, name[0].sun_family),
-                   BPF_CORE_READ(unix_sock_peer, addr, name[0].sun_path));
-        bpf_printk("### IOVEC: segs %u, count %u, len %u", BPF_CORE_READ(msg, msg_iter.nr_segs),
-                   BPF_CORE_READ(msg, msg_iter.count), BPF_CORE_READ(msg, msg_iter.iov, iov_len));
-        bpf_printk("### IOVEC: base '%s'\n", BPF_CORE_READ(msg, msg_iter.iov, iov_base));
-    }
+    if (__builtin_memcmp(BPF_CORE_READ(unix_sock, addr, name[0].sun_path), SYSLOG_DEVLOG_SOCKET,
+                         sizeof(SYSLOG_DEVLOG_SOCKET)) /*&&
+        __builtin_memcmp(BPF_CORE_READ(unix_sock, addr, name[0].sun_path), SYSLOG_JOURNAL_SOCKET,
+                         sizeof(SYSLOG_JOURNAL_SOCKET))*/)
+        return 0;
 
     /* clean expired records */
     expire_sock_records();
 
     /* lookup and update socket */
-    key = KEY_SOCK(BPF_CORE_READ(sock, __sk_common.skc_hash));
+    key = KEY_PID_INO(pid, BPF_CORE_READ(sock, __sk_common.skc_hash));
     sinfo = bpf_map_lookup_elem(&hash_socks, &key);
     ts_now = bpf_ktime_get_ns();
-    sysloghdr = (__u8 *)BPF_CORE_READ(msg, msg_iter.iov, iov_base);
-    data_len = BPF_CORE_READ(msg, msg_iter.iov, iov_len);
+    data_len = BPF_CORE_READ(msg, msg_iter.count);
     if (sinfo && sinfo->sock == sock) {
         /* update existing unix socket */
         if (isrx) {
@@ -1906,8 +1892,23 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
             sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
             sinfo->app_msg.len[num] = data_len;
             sinfo->app_msg.isrx[num] = isrx;
-            bpf_probe_read_kernel(sinfo->app_msg.data[num], MIN((__u16)data_len, sizeof(sinfo->app_msg.data[num])),
-                                  sysloghdr);
+
+            iov = (struct iovec *)BPF_CORE_READ(msg, msg_iter.iov);
+            segs = BPF_CORE_READ(msg, msg_iter.nr_segs);
+            for (cnt = 0; cnt < UNIX_SEGS_MAX; cnt++) {
+                if (cnt >= segs)
+                    break;
+                len = BPF_CORE_READ(iov, iov_len);
+                if (len > 0 && ofs >= 0 && ofs < sizeof(sinfo->app_msg.data[num] && num < APP_MSG_MAX))
+                    bpf_probe_read(sinfo->app_msg.data[num] + ofs, sizeof(sinfo->app_msg.data[num]) - ofs,
+                                   BPF_CORE_READ(iov, iov_base));
+                else
+                    break;
+                ofs += len;
+                iov++;
+            }
+            sinfo->app_msg.len[num] = ofs;
+
             /* export record on max application messages */
             // tbd: do we need submission?
             if (sinfo->app_msg.cnt >= APP_MSG_MAX) {
@@ -1922,6 +1923,7 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
             }
         } else
             bpf_printk("WARNING: Failed to capture syslog application message #%u\n", sinfo->app_msg.cnt);
+
         if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
             if (debug_proc(sinfo->comm, NULL))
                 bpf_printk("Updated %s socket %lx for pid %u", GET_ROLE_STR(sinfo->role), key, pid);
@@ -1953,26 +1955,29 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
                                   BPF_CORE_READ(task, mm, exe_file, f_path.dentry, d_name.name));
         bpf_probe_read_kernel_str(&sinfo->comm_parent, sizeof(sinfo->comm_parent),
                                   BPF_CORE_READ(task, real_parent, mm, exe_file, f_path.dentry, d_name.name));
+        bpf_probe_read_kernel_str(&sinfo->addr, sizeof(sinfo->addr), BPF_CORE_READ(unix_sock, addr, name[0].sun_path));
         sinfo->ts_proc = BPF_CORE_READ(task, start_time);
         sinfo->family = family;
         sinfo->proto = 0;
         sinfo->state = BPF_CORE_READ(sock, __sk_common.skc_state);
-        sinfo->role = ROLE_UNIX_CLIENT;
         sinfo->ts_first = ts_now;
         if (isrx) {
             // tbd: shourl not happen
+            sinfo->role = ROLE_UNIX_SERVER;
             sinfo->rx_ts = sinfo->rx_ts_first = sinfo->ts_first;
             sinfo->rx_packets = 1;
             sinfo->rx_bytes = data_len;
             sinfo->tx_packets = 0;
             sinfo->tx_bytes = 0;
         } else {
+            sinfo->role = ROLE_UNIX_CLIENT;
             sinfo->tx_ts = sinfo->tx_ts_first = sinfo->ts_first;
             sinfo->tx_packets = 1;
             sinfo->tx_bytes = data_len;
             sinfo->rx_packets = 0;
             sinfo->rx_bytes = 0;
         }
+        sinfo->app_msg.cnt = 0;
 
         /* nullify flags unused for UNIX */
         sinfo->tx_events = 0;
@@ -1984,19 +1989,27 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
             sinfo->rx_event[cnt] = 0;
         }
 
-        /* populate application data (dns) */
-        sinfo->app_msg.cnt = 0;
-        if (sinfo->app_msg.cnt < APP_MSG_MAX) {
-            num = sinfo->app_msg.cnt++;
-            sinfo->app_msg.type = APP_SYSLOG;
-            sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
-            sinfo->app_msg.len[num] = data_len;
-            sinfo->app_msg.isrx[num] = isrx;
-            bpf_probe_read_user(sinfo->app_msg.data[num], MIN((__u16)data_len + 1, sizeof(sinfo->app_msg.data[num])),
-                                sysloghdr);
-            bpf_printk("Captured syslog application message #%u\n", sinfo->app_msg.cnt);
-        } else
-            bpf_printk("WARNING: Failed to capture syslog application message #%u\n", sinfo->app_msg.cnt);
+        /* populate application data */
+        num = sinfo->app_msg.cnt++;
+        sinfo->app_msg.type = APP_SYSLOG;
+        sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
+        sinfo->app_msg.isrx[num] = isrx;
+
+        iov = (struct iovec *)BPF_CORE_READ(msg, msg_iter.iov);
+        segs = BPF_CORE_READ(msg, msg_iter.nr_segs);
+        for (cnt = 0; cnt < UNIX_SEGS_MAX; cnt++) {
+            if (cnt >= segs)
+                break;
+            len = BPF_CORE_READ(iov, iov_len);
+            if (len > 0 && ofs >= 0 && ofs < sizeof(sinfo->app_msg.data[num])) {
+                bpf_probe_read(sinfo->app_msg.data[num] + ofs, sizeof(sinfo->app_msg.data[num]) - ofs,
+                               BPF_CORE_READ(iov, iov_base));
+            } else
+                break;
+            ofs += len;
+            iov++;
+        }
+        sinfo->app_msg.len[num] = ofs;
 
         if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
             if (debug_proc(sinfo->comm, NULL))
@@ -2014,14 +2027,13 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     }
 
     /* debug for socket info */
-    // if (!debug_proc(sinfo->comm, NULL))
-    //     return 0;
+    if (!debug_proc(sinfo->comm, NULL))
+        return 0;
     bpf_printk("HANDLE_UNIX_EVENT: %s", func);
     bpf_printk("  PID: %u  KEY: %lx  STATE: %u", pid, key, sinfo->state);
     bpf_printk("  TX: %u  RX: %u", isrx ? 0 : data_len, isrx ? data_len : 0);
-    bpf_printk("  ADDRESS: %s", isrx ? BPF_CORE_READ(unix_sock, addr, name[0].sun_path)
-                                     : BPF_CORE_READ(unix_sock_peer, addr, name[0].sun_path));
-    bpf_printk("  SYSLOG MESSAGE: %s  LEN: %u", sinfo->app_msg.data[num], sinfo->app_msg.len[num]);
+    bpf_printk("  ADDRESS: %s", BPF_CORE_READ(unix_sock, addr, name[0].sun_path));
+    bpf_printk("  MESSAGE[%u]: '%s'  LEN: %u", num, sinfo->app_msg.data[num], sinfo->app_msg.len[num]);
     bpf_printk("  TOTAL: TX %lu   RX %lu\n", sinfo->tx_bytes, sinfo->rx_bytes);
 
     return 0;
@@ -2040,16 +2052,16 @@ int BPF_KPROBE(unix_dgram_sendmsg, struct socket *socket, struct msghdr *msg, si
 };
 
 /* kprobe for unix domain socket rx datagram events */
-SEC("kprobe/unix_dgram_recvmsg")
-int BPF_KPROBE(unix_dgram_recvmsg, struct socket *socket, struct msghdr *msg, size_t size, int flags) {
-    KPROBE_SWITCH(MONITOR_SOCK);
-    __u16                  family = AF_UNIX;
-    struct sock           *sock = BPF_CORE_READ(socket, sk);
-    struct SOCK_EVENT_INFO event = {sock, NULL, msg, family, 0, 0, NULL, true, "unix_dgram_recvmsg"};
-    handle_unix_event(ctx, &event);
-
-    return 0;
-};
+// SEC("kprobe/unix_dgram_recvmsg")
+// int BPF_KPROBE(unix_dgram_recvmsg, struct socket *socket, struct msghdr *msg, size_t size, int flags) {
+//     KPROBE_SWITCH(MONITOR_SOCK);
+//     __u16                  family = AF_UNIX;
+//     struct sock           *sock = BPF_CORE_READ(socket, sk);
+//     struct SOCK_EVENT_INFO event = {sock, NULL, msg, family, 0, 0, NULL, true, "unix_dgram_recvmsg"};
+//     handle_unix_event(ctx, &event);
+//
+//     return 0;
+// };
 
 /* socket filter used to capture large tcp data packets */
 SEC("socket")

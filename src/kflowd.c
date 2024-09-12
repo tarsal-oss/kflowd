@@ -376,6 +376,30 @@ static void sig_handler() {
 
 /* print legend */
 static void legend(void) {
+    // struct APP_MSG_SYSLOG  syslog_data = {0};
+    // struct APP_MSG_SYSLOG *syslog = &syslog_data;
+    // int                    ret = 0;
+
+    // // char sysloghdr[] = "<13>Sep 13 14:28:04 dirk[99]: test2";
+    // char sysloghdr[] = "<30>Sep 13 16:01:08 chronyd[858]: Can't synchronise: no majority";
+    // // char sysloghdr[] = "<13>1 2024-09-13T14:30:01.121707-04:00 rh9 dirk 64835 123 [timeQuality tzKnown=\"1\" "
+    // //                    "isSynced=\"1\" syncAccuracy=\"92529\"] test1";
+    // if ((9 != (ret = sscanf(sysloghdr, "<%u>%u %32s %255s %48s %48s %32s [%255[^]]] %255[^\n]", &syslog->priority,
+    //                         &syslog->version, syslog->timestamp, syslog->hostname, syslog->appname, syslog->procid,
+    //                         syslog->msgid, syslog->data, syslog->message))) &&
+    //     /* local format: <prio>ts app[pid]: message  */
+    //     (5 != (ret = sscanf(sysloghdr, "<%u>%15[^\n] %48[^[][%48[^]]]: %255[^\n]", &syslog->priority,
+    //     syslog->timestamp,
+    //                         syslog->appname, syslog->procid, syslog->message))) &&
+    //     /* local format: <prio>ts app: message  */
+    //     (4 != (ret = sscanf(sysloghdr, "<%u>%15[^\n] %48[^:]: %255[^\n]", &syslog->priority, syslog->timestamp,
+    //                         syslog->appname, syslog->message))))
+    //     printf("CANNOT DECODE (ret=%u): '%s' \n", ret, sysloghdr);
+    // else
+    //     printf("DECODED (ret=%u): '%u,%s,%s,%s,%s'\n", ret, syslog->priority, syslog->timestamp, syslog->appname,
+    //            syslog->procid, syslog->message);
+    // exit(EXIT_SUCCESS);
+
     int cntk;
     int cntk_sk;
     int cntsk;
@@ -548,7 +572,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         else
             json_obj[J_SOCK] = mkjson(MKJ_OBJ, 3,
                 J_STRING, JKEY(I_SOCK_ROLE), rs->role == ROLE_UNIX_SERVER ? "SERVER" : "CLIENT",
-                J_STRING, JKEY(I_SOCK_ADDRESS), SYSLOG_SOCKET,
+                J_STRING, JKEY(I_SOCK_ADDRESS), rs->addr,
                 J_STRING, JKEY(I_SOCK_FAMILY), "AF_UNIX");
 
         /* sock tx */
@@ -655,7 +679,6 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
 
         /* app */
         app_msg = (struct APP_MSG *)&rs->app_msg;
-        printf("### APP_MSG_TYPE: %u  CNT: %u\n", app_msg->type, app_msg->cnt);
         if (app_msg->cnt && ((app_msg->type == APP_DNS && plugin_dns_decode) ||
                              (app_msg->type == APP_HTTP && plugin_http_decode) ||
                              (app_msg->type == APP_SYSLOG && plugin_syslog_decode))) {
@@ -776,11 +799,11 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                         J_UINT, "Priority", syslog.priority,
                         J_UINT, "Version", syslog.version,
                         J_STRING, "Timestamp", syslog.timestamp,
-                        J_STRING, "Hostname", syslog.hostname,
+                        strlen(syslog.hostname) ? J_STRING : J_IGN_STRING, "Hostname", syslog.hostname,
                         J_STRING, "Appname", syslog.appname,
-                        J_STRING, "ProcId", syslog.procid,
-                        J_STRING, "MsgId", syslog.msgid,
-                        J_STRING, "Data", syslog.data,
+                        strlen(syslog.procid) ? J_STRING : J_IGN_STRING, "ProcId", syslog.procid,
+                        strlen(syslog.msgid) ? J_STRING : J_IGN_STRING, "MsgId", syslog.msgid,
+                        strlen(syslog.data) ? J_STRING : J_IGN_STRING, "Data", syslog.data,
                         J_STRING, "Message", syslog.message);
                 } else if (app_msg->type == APP_SYSLOG) {
                     msg = mkjson(MKJ_OBJ, 2,
