@@ -1835,10 +1835,18 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     int                 segs;
     __u32               len;
     __u16               ofs = 0;
+    bool                found = false;
     int                 cnt;
 
     /* ignore network events from self to prevent amplification loops */
     if (pid_self == pid)
+        return 0;
+
+    /* check syslog configuration */
+    for (cnt = 0; cnt < APP_PORT_MAX; cnt++)
+        if (APP_SYSLOG_UNIX == app_proto[APP_SYSLOG][cnt])
+            found = true;
+    if (!found)
         return 0;
 
     /* get socket event info */
@@ -2301,7 +2309,11 @@ int handle_skb(struct __sk_buff *skb) {
             bpf_printk("  LOCAL:  %pI6c:%u", laddr, lport);
             bpf_printk("  REMOTE: %pI6c:%u", raddr, rport);
         }
-        bpf_printk("  APP:  MESSAGE %u  LEN %u (%u)\n", sinfo->app_msg.cnt, sinfo->app_msg.len[num], data_len);
+        if (is_app_port[APP_HTTP])
+            bpf_printk("  HTTP MESSAGE[%u]:  LEN %u (%u)\n", sinfo->app_msg.cnt, sinfo->app_msg.len[num], data_len);
+        else if (is_app_port[APP_SYSLOG])
+            bpf_printk("  SYSLOG MESSAGE[%u]: '%s'  LEN %u\n", sinfo->app_msg.cnt, sinfo->app_msg.data[num],
+                       sinfo->app_msg.len[num]);
     }
 
     return skb->len;

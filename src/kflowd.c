@@ -46,8 +46,8 @@ static char header_str[] = "\e[1;33mkflowd -- (c) 2024 Tarsal, Inc\e[0m\n"
 static char usage_str[] =
     "Usage:\n"
     "  kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|json-min|table] [-v] [-c]\n"
-    "         [-p dns=PROTO/PORT,...] [-p http=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V]\n"
-    "         [-T TOKEN] [-P PATH] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]\n"
+    "         [-p dns|http|syslog=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V] [-T TOKEN] [-P PATH]\n"
+    "         [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]\n"
     "  -m file,socket           Monitor only specified kernel subsystem (filesystem or sockets)\n"
     "                             (default: all, option omitted!)\n"
     "  -t IDLE,ACTIVE           Timeout in seconds for idle or active network sockets until export\n"
@@ -65,7 +65,7 @@ static char usage_str[] =
     "  -p http=PROTO/PORT,...   Port(s) examined for decoding of HTTP application protocol\n"
     "                             (default: 'http=tcp/80', disabled: 'http=off')\n"
     "  -p syslog=PROTO/PORT,... Port(s) examined for decoding of SYSLOG application protocol\n"
-    "                             (default: 'syslog=udp/514,tcp/514', disabled: 'syslog=off')\n"
+    "                             (default: 'syslog=udp/514,tcp/514,unix', disabled: 'syslog=off')\n"
     "  -u IP:PORT,...           UDP server(s) IPv4 or IPv6 address to send json output to.\n"
     "                           Output also printed to stdout console unless quiet option -q or\n"
     "                             daemon mode -d specified\n"
@@ -376,30 +376,6 @@ static void sig_handler() {
 
 /* print legend */
 static void legend(void) {
-    // struct APP_MSG_SYSLOG  syslog_data = {0};
-    // struct APP_MSG_SYSLOG *syslog = &syslog_data;
-    // int                    ret = 0;
-
-    // // char sysloghdr[] = "<13>Sep 13 14:28:04 dirk[99]: test2";
-    // char sysloghdr[] = "<30>Sep 13 16:01:08 chronyd[858]: Can't synchronise: no majority";
-    // // char sysloghdr[] = "<13>1 2024-09-13T14:30:01.121707-04:00 rh9 dirk 64835 123 [timeQuality tzKnown=\"1\" "
-    // //                    "isSynced=\"1\" syncAccuracy=\"92529\"] test1";
-    // if ((9 != (ret = sscanf(sysloghdr, "<%u>%u %32s %255s %48s %48s %32s [%255[^]]] %255[^\n]", &syslog->priority,
-    //                         &syslog->version, syslog->timestamp, syslog->hostname, syslog->appname, syslog->procid,
-    //                         syslog->msgid, syslog->data, syslog->message))) &&
-    //     /* local format: <prio>ts app[pid]: message  */
-    //     (5 != (ret = sscanf(sysloghdr, "<%u>%15[^\n] %48[^[][%48[^]]]: %255[^\n]", &syslog->priority,
-    //     syslog->timestamp,
-    //                         syslog->appname, syslog->procid, syslog->message))) &&
-    //     /* local format: <prio>ts app: message  */
-    //     (4 != (ret = sscanf(sysloghdr, "<%u>%15[^\n] %48[^:]: %255[^\n]", &syslog->priority, syslog->timestamp,
-    //                         syslog->appname, syslog->message))))
-    //     printf("CANNOT DECODE (ret=%u): '%s' \n", ret, sysloghdr);
-    // else
-    //     printf("DECODED (ret=%u): '%u,%s,%s,%s,%s'\n", ret, syslog->priority, syslog->timestamp, syslog->appname,
-    //            syslog->procid, syslog->message);
-    // exit(EXIT_SUCCESS);
-
     int cntk;
     int cntk_sk;
     int cntsk;
@@ -1214,8 +1190,9 @@ int main(int argc, char **argv) {
     config.app_port_num[APP_HTTP] = 1;
     config.app_proto[APP_SYSLOG][0] = IPPROTO_UDP;
     config.app_proto[APP_SYSLOG][1] = IPPROTO_TCP;
+    config.app_proto[APP_SYSLOG][2] = APP_SYSLOG_UNIX;
     config.app_port[APP_SYSLOG][0] = config.app_port[APP_SYSLOG][1] = SYSLOG_PORT;
-    config.app_port_num[APP_SYSLOG] = 2;
+    config.app_port_num[APP_SYSLOG] = 3;
     snprintf(config.plugin_path, sizeof(config.plugin_path), "%s", PLUGIN_PATH);
 
     /* get system info and parse command line options */
@@ -1360,8 +1337,17 @@ int main(int argc, char **argv) {
                     while ((token = strtok(NULL, ",")) != NULL) {
                         port_num = config.app_port_num[APP_SYSLOG];
                         TOLOWER_STR(token);
-                        if ((int)strlen(token) < 5 || (strncmp(token, "tcp/", 4) && strncmp(token, "udp/", 4)))
-                            usage("Invalid transport protocol for SYSLOG port(s) specified");
+                        if ((int)strlen(token) < 5 || (strncmp(token, "tcp/", 4) && strncmp(token, "udp/", 4))) {
+                            if(!strncmp(token, "unix", 5)) {
+                                config.app_proto[APP_SYSLOG][port_num] = APP_SYSLOG_UNIX;
+                                if (++config.app_port_num[APP_SYSLOG] > APP_PORT_MAX)
+                                    usage("Too many SYSLOG ports specified");
+                                else
+                                    continue;
+                            }
+                            else
+                                usage("Invalid transport protocol for SYSLOG port(s) specified");
+                        }
                         for (cnt = 4; cnt < (int)strlen(token); cnt++)
                             if (!isdigit(token[cnt]))
                                 invalid = true;
@@ -1694,9 +1680,13 @@ int main(int argc, char **argv) {
         }
         if (config.app_port_num[APP_SYSLOG]) {
             fprintf(stderr, "\e[0;32m[+]  \e[0m SYSLOG:  ");
-            for (cnt = 0; cnt < config.app_port_num[APP_SYSLOG]; cnt++)
-                fprintf(stderr, "%s%s%u", cnt ? ", " : "",
-                        config.app_proto[APP_SYSLOG][cnt] == IPPROTO_TCP ? "tcp/" : "udp/", config.app_port[APP_SYSLOG][cnt]);
+            for (cnt = 0; cnt < config.app_port_num[APP_SYSLOG]; cnt++) {
+                if(config.app_proto[APP_SYSLOG][cnt] == APP_SYSLOG_UNIX)
+                     fprintf(stderr, "%sunix", cnt ? ", " : "");
+                else
+                    fprintf(stderr, "%s%s%u", cnt ? ", " : "",
+                            config.app_proto[APP_SYSLOG][cnt] == IPPROTO_TCP ? "tcp/" : "udp/", config.app_port[APP_SYSLOG][cnt]);
+            }
             fprintf(stderr, "\n");
         }
     }
