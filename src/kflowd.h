@@ -267,6 +267,7 @@ struct SOCK_EVENT {
 enum APP_TYPE { APP_DNS, APP_HTTP, APP_SYSLOG, APP_MAX };
 #define GET_APP_NAME(type)                                                                                             \
     (type == APP_DNS ? "DNS" : type == APP_HTTP ? "HTTP" : type == APP_SYSLOG ? "SYSLOG" : "unknown")
+#define APP_SYSLOG_UNIX 512
 #define APP_MSG_MAX     4
 #define APP_MSG_LEN_MIN MIN(DNS_MSG_LEN_MIN, HTTP_MSG_LEN_MIN)
 #define APP_MSG_LEN_MAX 1400

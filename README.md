@@ -271,7 +271,7 @@ kflowd outputs JSON messages generated for each record of aggregated file system
 </details>
 
 <details open>
-<summary>&nbsp;UNIX Socket + SYSLOG Record (tbd)</summary>
+<summary>&nbsp;UNIX Socket + SYSLOG Record</summary>
 
 ```
 {
@@ -354,42 +354,44 @@ For high performance UDP output the following kernel network settings are recomm
 ```
 Usage:
   kflowd [-m file,socket] [-t IDLE,ACTIVE] [-e EVENTS] [-o json|json-min|table] [-v] [-c]
-         [-p dns=PROTO/PORT,...] [-p http=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V]
-         [-T TOKEN] [-P PATH] [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]
-  -m file,socket          Monitor only specified kernel subsystem (filesystem or sockets)
-                            (default: all, option omitted!)
-  -t IDLE,ACTIVE          Timeout in seconds for idle or active network sockets until export
-                            (default: idle '15' seconds, active '1800' seconds)
-  -e EVENTS               Max number of filesystem events per aggregated record until export
-                            (default: disabled, '1': no aggregation)
-  -o json                 Json output with formatting (default)
-     json-min             Json output with minimal formatting
-     table                Tabular output with limited keys and no UDP output
-  -v                      Version of executable files identified by installed package
-                            (supported only for rpm- and deb-based package management)
-  -c                      Checksum hashes of MD5 and SHA256 calculated for executables
-  -p dns=PROTO/PORT,...   Port(s) examined for decoding of DNS application protocol
-                            (default: 'dns=udp/53,tcp/53', disabled: 'dns=off')
-  -p http=PROTO/PORT,...  Port(s) examined for decoding of HTTP application protocol
-                            (default: 'http=tcp/80', disabled: 'http=off')
-  -u IP:PORT,...          UDP server(s) IPv4 or IPv6 address to send json output to.
-                          Output also printed to stdout console unless quiet option -q or
-                            daemon mode -d specified
-  -q                      Quiet mode to suppress output to stdout console
-  -d                      Daemonize program to run in background
-  -V                      Verbose output
-                            Print eBPF load and co-re messages on start of eBPF program
-                            to stderr console
-  -T TOKEN                Token specified on host to be included in json output
-  -P PATH                 Path to search for kflowd plugin modules (default: '../lib/')
-  -l, --legend            Show legend
-  -h, --help              Show help
-      --version           Show version
-  -D PROCESS              Debug
-                            Print ebpf kernel log messages of process or expiration queue to
-                            kernel trace pipe (any process: '*', with quotes!, queue: 'q')
-                            Use command:
-                              'sudo cat /sys/kernel/debug/tracing/trace_pipe'
+         [-p dns|http|syslog=PROTO/PORT,...] [-u IP:PORT] [-q] [-d] [-V] [-T TOKEN] [-P PATH]
+         [-D PROCESS], [-l] [--legend], [-h] [--help], [--version]
+  -m file,socket           Monitor only specified kernel subsystem (filesystem or sockets)
+                             (default: all, option omitted!)
+  -t IDLE,ACTIVE           Timeout in seconds for idle or active network sockets until export
+                             (default: idle '15' seconds, active '1800' seconds)
+  -e EVENTS                Max number of filesystem events per aggregated record until export
+                             (default: disabled, '1': no aggregation)
+  -o json                  Json output with formatting (default)
+     json-min              Json output with minimal formatting
+     table                 Tabular output with limited keys and no UDP output
+  -v                       Version of executable files identified by installed package
+                             (supported only for rpm- and deb-based package management)
+  -c                       Checksum hashes of MD5 and SHA256 calculated for executables
+  -p dns=PROTO/PORT,...    Port(s) examined for decoding of DNS application protocol
+                             (default: 'dns=udp/53,tcp/53', disabled: 'dns=off')
+  -p http=PROTO/PORT,...   Port(s) examined for decoding of HTTP application protocol
+                             (default: 'http=tcp/80', disabled: 'http=off')
+  -p syslog=PROTO/PORT,... Port(s) examined for decoding of SYSLOG application protocol
+                             (default: 'syslog=udp/514,tcp/514,unix', disabled: 'syslog=off')
+  -u IP:PORT,...           UDP server(s) IPv4 or IPv6 address to send json output to.
+                           Output also printed to stdout console unless quiet option -q or
+                             daemon mode -d specified
+  -q                       Quiet mode to suppress output to stdout console
+  -d                       Daemonize program to run in background
+  -V                       Verbose output
+                             Print eBPF load and co-re messages on start of eBPF program
+                             to stderr console
+  -T TOKEN                 Token specified on host to be included in json output
+  -P PATH                  Path to search for kflowd plugin modules (default: '../lib/')
+  -l, --legend             Show legend
+  -h, --help               Show help
+      --version            Show version
+  -D PROCESS               Debug
+                             Print ebpf kernel log messages of process or expiration queue to
+                             kernel trace pipe (any process: '*', with quotes!, queue: 'q')
+                             Use command:
+                               'sudo cat /sys/kernel/debug/tracing/trace_pipe'
 
 Examples:
   sudo ./kflowd                                                           # terminal mode
