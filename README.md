@@ -301,9 +301,9 @@ kflowd outputs JSON messages generated for each record of aggregated file system
   "SockAge": 18.095146325,
   "App": "SYSLOG",
   "AppTxSyslog": [{
-    "Facility": "security/authorization",
-    "Severity": "informational",
-    "Priority": 86,
+    "Facility": "Security/Authorization",
+    "Severity": "Notice (5)",
+    "Priority": 85,
     "Version": 0,
     "Timestamp": "Sep 16 14:30:01",
     "Appname": "CRON",
@@ -311,8 +311,8 @@ kflowd outputs JSON messages generated for each record of aggregated file system
     "Message": "pam_unix(cron:session): session opened for user root(uid=0) by (uid=0)"
   },
   {
-    "Facility": "security/authorization",
-    "Severity": "informational",
+    "Facility": "Security/Authorization",
+    "Severity": "Informational (6)",
     "Priority": 86,
     "Version": 0,
     "Timestamp": "Sep 16 14:30:01",
