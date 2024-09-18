@@ -766,15 +766,15 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                     else
                         msg = mkjson(MKJ_OBJ, 1, J_STRING, "_Exception", "HTTP Message Decoder");
                 } else if (app_msg->type == APP_SYSLOG && !plugin_syslog_decode(app_msg->data[idx], app_msg->len[idx], &syslog)) {
-                    // TBD:  make module, escape syslog.data
-                    //if (9 != sscanf(app_msg->data[idx], "<%u>%u %32s %255s %48s %48s %32s [%255[^]]] %255[^\n]", &syslog.priority, &syslog.version,
-                    //            syslog.timestamp, syslog.hostname, syslog.appname, syslog.procid, syslog.msgid, syslog.data, syslog.message)) {
+                    /* ignore empty messsages from sytemd */
+                    if(!strcmp(rs->addr, SYSLOG_JOURNAL_SOCKET) && !strlen(syslog.message))
+                        continue;
                     msg = mkjson(MKJ_OBJ, 11,
                         J_STRING, "Facility", syslog_facility_table[syslog.priority/8],
                         J_STRING, "Severity", syslog_severity_table[syslog.priority%8],
                         J_UINT, "Priority", syslog.priority,
                         J_UINT, "Version", syslog.version,
-                        J_STRING, "Timestamp", syslog.timestamp,
+                        strlen(syslog.timestamp) ? J_STRING : J_IGN_STRING, "Timestamp", syslog.timestamp,
                         strlen(syslog.hostname) ? J_STRING : J_IGN_STRING, "Hostname", syslog.hostname,
                         J_STRING, "Appname", syslog.appname,
                         strlen(syslog.procid) ? J_STRING : J_IGN_STRING, "ProcId", syslog.procid,

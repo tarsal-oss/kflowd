@@ -1863,9 +1863,9 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
         unix_sock = (struct unix_sock *)BPF_CORE_READ((struct unix_sock *)sock, peer);
     bpf_probe_read_kernel_str(comm, sizeof(comm), BPF_CORE_READ(task, mm, exe_file, f_path.dentry, d_name.name));
     if (__builtin_memcmp(BPF_CORE_READ(unix_sock, addr, name[0].sun_path), SYSLOG_DEVLOG_SOCKET,
-                         sizeof(SYSLOG_DEVLOG_SOCKET)) /*&&
+                         sizeof(SYSLOG_DEVLOG_SOCKET)) &&
         __builtin_memcmp(BPF_CORE_READ(unix_sock, addr, name[0].sun_path), SYSLOG_JOURNAL_SOCKET,
-                         sizeof(SYSLOG_JOURNAL_SOCKET))*/)
+                         sizeof(SYSLOG_JOURNAL_SOCKET)))
         return 0;
 
     /* clean expired records */
@@ -2058,18 +2058,6 @@ int BPF_KPROBE(unix_dgram_sendmsg, struct socket *socket, struct msghdr *msg, si
 
     return 0;
 };
-
-/* kprobe for unix domain socket rx datagram events */
-// SEC("kprobe/unix_dgram_recvmsg")
-// int BPF_KPROBE(unix_dgram_recvmsg, struct socket *socket, struct msghdr *msg, size_t size, int flags) {
-//     KPROBE_SWITCH(MONITOR_SOCK);
-//     __u16                  family = AF_UNIX;
-//     struct sock           *sock = BPF_CORE_READ(socket, sk);
-//     struct SOCK_EVENT_INFO event = {sock, NULL, msg, family, 0, 0, NULL, true, "unix_dgram_recvmsg"};
-//     handle_unix_event(ctx, &event);
-//
-//     return 0;
-// };
 
 /* socket filter used to capture large tcp data packets */
 SEC("socket")

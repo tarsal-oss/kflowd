@@ -261,6 +261,8 @@ struct SOCK_EVENT {
 #define DNS_RDATA_DEC_LEN_MAX     512
 #define DNS_QTYPE_MAX             (int)(sizeof(dns_qtypes) / sizeof(struct DNS_QTYPE))
 #define SYSLOG_PORT               514
+#define SYSLOG_KEY_LEN_MAX        256
+#define SYSLOG_VALUE_LEN_MAX      256
 #define UNIX_SEGS_MAX             32
 
 /* define application constants */
@@ -456,37 +458,38 @@ struct APP_MSG_HTTP {
 
 /* dfine syslog constants */
 #define SYSLOG_FACILITY_LEN_MAX     32
-#define SYSLOG_SEVERITY_LEN_MAX     16
+#define SYSLOG_SEVERITY_LEN_MAX     32
 #define SYSLOG_HEADER_SHORT_LEN_MAX 48
 #define SYSLOG_HEADER_LEN_MAX       255
 #define SYSLOG_DEVLOG_SOCKET        "/run/systemd/journal/dev-log"
 #define SYSLOG_JOURNAL_SOCKET       "/run/systemd/journal/socket"
-char syslog_facility_table[][SYSLOG_FACILITY_LEN_MAX] = {"kernel",
-                                                         "user",
-                                                         "mail system",
-                                                         "system daemon",
-                                                         "security/authorization",
-                                                         "internal",
-                                                         "line printer",
-                                                         "network news",
-                                                         "uucp",
-                                                         "clock daemon",
-                                                         "security/authorization",
-                                                         "ftp daemon",
-                                                         "ntp",
-                                                         "log audit",
-                                                         "log alert",
-                                                         "clock daemon",
-                                                         "local0",
-                                                         "local1",
-                                                         "local2",
-                                                         "local3",
-                                                         "local4",
-                                                         "local5",
-                                                         "local6",
-                                                         "local7"};
-char syslog_severity_table[][SYSLOG_SEVERITY_LEN_MAX] = {"emergency", "alert",  "critical",      "error",
-                                                         "warning",   "notice", "informational", "debug"};
+char syslog_facility_table[][SYSLOG_FACILITY_LEN_MAX] = {"Kernel",
+                                                         "User",
+                                                         "Mail System",
+                                                         "System Daemon",
+                                                         "Security/Authorization",
+                                                         "Internal",
+                                                         "Line Printer",
+                                                         "Network News",
+                                                         "UUCP",
+                                                         "Clock Daemon",
+                                                         "Security/Authorization",
+                                                         "FTP Daemon",
+                                                         "NTP",
+                                                         "Log Audit",
+                                                         "Log Alert",
+                                                         "Clock Daemon",
+                                                         "Local0",
+                                                         "Local1",
+                                                         "Local2",
+                                                         "Local3",
+                                                         "Local4",
+                                                         "Local5",
+                                                         "Local6",
+                                                         "Local7"};
+char syslog_severity_table[][SYSLOG_SEVERITY_LEN_MAX] = {"Emergency (0)",     "Alert (1)",   "Critical (2)",
+                                                         "Error (3)",         "Warning (4)", "Notice (5)",
+                                                         "Informational (6)", "Debug (7)"};
 
 /* define decoded http message */
 struct APP_MSG_SYSLOG {
