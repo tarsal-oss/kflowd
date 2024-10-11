@@ -59,6 +59,13 @@ struct {
 } heap_sock SEC(".maps");
 
 struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, int);
+    __type(value, char[APP_MSG_LEN_MAX * 2]);
+} heap_appdata SEC(".maps");
+
+struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, MAP_SOCKS_MAX);
     __type(key, struct SOCK_TUPLE);
@@ -691,6 +698,13 @@ static __always_inline int submit_sock_record(struct SOCK_INFO *sinfo) {
         r->app_msg.cnt = sinfo->app_msg.cnt;
         if (sinfo->app_msg.cnt)
             bpf_probe_read_kernel(&r->app_msg, sizeof(r->app_msg), &sinfo->app_msg);
+
+        /* reset counters needed after unix socket timeouts */
+        sinfo->rx_packets = 0;
+        sinfo->rx_bytes = 0;
+        sinfo->tx_packets = 0;
+        sinfo->tx_bytes = 0;
+        sinfo->app_msg.cnt = 0;
     }
 
     /* submit to ringbuffer */
@@ -1823,6 +1837,7 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     struct SOCK_QUEUE   sq = {0};
     struct STATS       *s;
     char                comm[TASK_COMM_LEN] = {0};
+    char               *data;
     __u32               data_len;
     __u16               family;
     char               *func;
@@ -1871,6 +1886,26 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     /* clean expired records */
     expire_sock_records();
 
+    /* get app data */
+    data = bpf_map_lookup_elem(&heap_appdata, &zero);
+    if (!data) {
+        bpf_printk("WARNING: Failed to allocate app data for pid %u\n", pid);
+        return 0;
+    }
+    iov = (struct iovec *)BPF_CORE_READ(msg, msg_iter.iov);
+    segs = BPF_CORE_READ(msg, msg_iter.nr_segs);
+    for (cnt = 0; cnt < segs; cnt++) {
+        if (cnt >= UNIX_SEGS_MAX)
+            break;
+        len = BPF_CORE_READ(iov, iov_len);
+        if (len > 0 && ofs >= 0 && ofs < APP_MSG_LEN_MAX) {
+            bpf_probe_read(data + ofs, APP_MSG_LEN_MAX - ofs, BPF_CORE_READ(iov, iov_base));
+            ofs += len;
+        } else
+            break;
+        iov++;
+    }
+
     /* lookup and update socket */
     key = KEY_PID_INO(pid, BPF_CORE_READ(sock, __sk_common.skc_hash));
     sinfo = bpf_map_lookup_elem(&hash_socks, &key);
@@ -1900,21 +1935,7 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
             sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
             sinfo->app_msg.len[num] = data_len;
             sinfo->app_msg.isrx[num] = isrx;
-
-            iov = (struct iovec *)BPF_CORE_READ(msg, msg_iter.iov);
-            segs = BPF_CORE_READ(msg, msg_iter.nr_segs);
-            for (cnt = 0; cnt < UNIX_SEGS_MAX; cnt++) {
-                if (cnt >= segs)
-                    break;
-                len = BPF_CORE_READ(iov, iov_len);
-                if (len > 0 && ofs >= 0 && ofs < sizeof(sinfo->app_msg.data[num] && num < APP_MSG_MAX))
-                    bpf_probe_read(sinfo->app_msg.data[num] + ofs, sizeof(sinfo->app_msg.data[num]) - ofs,
-                                   BPF_CORE_READ(iov, iov_base));
-                else
-                    break;
-                ofs += len;
-                iov++;
-            }
+            bpf_probe_read(sinfo->app_msg.data[num], sizeof(sinfo->app_msg.data[num]), data);
             sinfo->app_msg.len[num] = ofs;
 
             /* export record on max application messages */
@@ -2002,21 +2023,7 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
         sinfo->app_msg.type = APP_SYSLOG;
         sinfo->app_msg.ts[num] = bpf_ktime_get_ns();
         sinfo->app_msg.isrx[num] = isrx;
-
-        iov = (struct iovec *)BPF_CORE_READ(msg, msg_iter.iov);
-        segs = BPF_CORE_READ(msg, msg_iter.nr_segs);
-        for (cnt = 0; cnt < UNIX_SEGS_MAX; cnt++) {
-            if (cnt >= segs)
-                break;
-            len = BPF_CORE_READ(iov, iov_len);
-            if (len > 0 && ofs >= 0 && ofs < sizeof(sinfo->app_msg.data[num])) {
-                bpf_probe_read(sinfo->app_msg.data[num] + ofs, sizeof(sinfo->app_msg.data[num]) - ofs,
-                               BPF_CORE_READ(iov, iov_base));
-            } else
-                break;
-            ofs += len;
-            iov++;
-        }
+        bpf_probe_read(sinfo->app_msg.data[num], sizeof(sinfo->app_msg.data[num]), data);
         sinfo->app_msg.len[num] = ofs;
 
         if (!bpf_map_update_elem(&hash_socks, &key, sinfo, BPF_ANY)) {
