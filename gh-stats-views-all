@@ -1,8 +1,13 @@
 [
   {
+    "timestamp": "2024-10-12T00:00:00Z",
+    "count": 26,
+    "uniques": 8
+  },
+  {
     "timestamp": "2024-10-11T00:00:00Z",
-    "count": 15,
-    "uniques": 7
+    "count": 23,
+    "uniques": 8
   },
   {
     "timestamp": "2024-10-10T00:00:00Z",
