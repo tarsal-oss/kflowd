@@ -1833,10 +1833,11 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     struct msghdr      *msg;
     struct sock        *sock;
     struct unix_sock   *unix_sock;
+    struct sockaddr_un *sunaddr;
     struct SOCK_INFO   *sinfo;
     struct SOCK_QUEUE   sq = {0};
     struct STATS       *s;
-    char                comm[TASK_COMM_LEN] = {0};
+    char                path[UNIX_PATH_MAX] = {0};
     char               *data;
     __u32               data_len;
     __u16               family;
@@ -1871,16 +1872,20 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     isrx = event->isrx;
     func = event->func;
 
-    /* get unix socket and check syslog sockets */
+    /* get unix socket and path  */
     if (isrx)
         unix_sock = (struct unix_sock *)sock;
     else
         unix_sock = (struct unix_sock *)BPF_CORE_READ((struct unix_sock *)sock, peer);
-    bpf_probe_read_kernel_str(comm, sizeof(comm), BPF_CORE_READ(task, mm, exe_file, f_path.dentry, d_name.name));
-    if (__builtin_memcmp(BPF_CORE_READ(unix_sock, addr, name[0].sun_path), SYSLOG_DEVLOG_SOCKET,
-                         sizeof(SYSLOG_DEVLOG_SOCKET)) &&
-        __builtin_memcmp(BPF_CORE_READ(unix_sock, addr, name[0].sun_path), SYSLOG_JOURNAL_SOCKET,
-                         sizeof(SYSLOG_JOURNAL_SOCKET)))
+    bpf_probe_read_kernel_str(&path, sizeof(path), BPF_CORE_READ(unix_sock, addr, name[0].sun_path));
+    if (!path[0]) {
+        sunaddr = (struct sockaddr_un *)BPF_CORE_READ(msg, msg_name);
+        bpf_probe_read_kernel_str(&path, sizeof(path), BPF_CORE_READ(sunaddr, sun_path));
+    }
+
+    /* check for syslog sockets */
+    if (__builtin_memcmp(path, SYSLOG_DEVLOG_SOCKET, sizeof(SYSLOG_DEVLOG_SOCKET)) &&
+        __builtin_memcmp(path, SYSLOG_JOURNAL_SOCKET, sizeof(SYSLOG_JOURNAL_SOCKET)))
         return 0;
 
     /* clean expired records */
@@ -1984,7 +1989,7 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
                                   BPF_CORE_READ(task, mm, exe_file, f_path.dentry, d_name.name));
         bpf_probe_read_kernel_str(&sinfo->comm_parent, sizeof(sinfo->comm_parent),
                                   BPF_CORE_READ(task, real_parent, mm, exe_file, f_path.dentry, d_name.name));
-        bpf_probe_read_kernel_str(&sinfo->addr, sizeof(sinfo->addr), BPF_CORE_READ(unix_sock, addr, name[0].sun_path));
+        bpf_probe_read_kernel_str(&sinfo->addr, sizeof(sinfo->addr), path);
         sinfo->ts_proc = BPF_CORE_READ(task, start_time);
         sinfo->family = family;
         sinfo->proto = 0;
@@ -2047,7 +2052,7 @@ static __always_inline int handle_unix_event(void *ctx, const struct SOCK_EVENT_
     bpf_printk("HANDLE_UNIX_EVENT: %s", func);
     bpf_printk("  PID: %u  KEY: %lx  STATE: %u", pid, key, sinfo->state);
     bpf_printk("  TX: %u  RX: %u", isrx ? 0 : data_len, isrx ? data_len : 0);
-    bpf_printk("  ADDRESS: %s", BPF_CORE_READ(unix_sock, addr, name[0].sun_path));
+    bpf_printk("  ADDRESS: %s", sinfo->addr);
     bpf_printk("  MESSAGE[%u]: '%s'  LEN: %u", num, sinfo->app_msg.data[num], sinfo->app_msg.len[num]);
     bpf_printk("  TOTAL: TX %lu   RX %lu\n", sinfo->tx_bytes, sinfo->rx_bytes);
 
